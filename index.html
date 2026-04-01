@@ -1,0 +1,955 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Visitenkarten-Scanner · Claude</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: #0f0f13; color: #e8e8f0;
+  min-height: 100vh; display: flex; flex-direction: column;
+  align-items: center; padding: 24px 16px 60px;
+}
+header { text-align: center; margin-bottom: 24px; }
+.pill {
+  display: inline-block; background: #d97706; color: #fff;
+  font-size: 0.68rem; font-weight: 700; letter-spacing: 0.8px;
+  text-transform: uppercase; padding: 3px 10px; border-radius: 99px; margin-bottom: 10px;
+}
+header h1 { font-size: 1.5rem; font-weight: 700; color: #fff; }
+header p  { margin-top: 5px; font-size: 0.85rem; color: #777; }
+.card {
+  background: #1a1a24; border: 1px solid #2a2a38;
+  border-radius: 16px; padding: 20px;
+  width: 100%; max-width: 680px; margin-bottom: 16px;
+}
+
+/* ── API KEY SETUP ── */
+.setup-screen h2 { font-size: 1.1rem; color: #fff; margin-bottom: 8px; }
+.setup-screen p  { font-size: 0.85rem; color: #777; margin-bottom: 16px; line-height: 1.5; }
+.key-row { display: flex; gap: 8px; margin-bottom: 8px; }
+.key-row input {
+  flex: 1; background: #12121a; border: 1px solid #333;
+  border-radius: 10px; padding: 11px 14px; color: #e8e8f0;
+  font-size: 0.85rem; font-family: monospace; outline: none;
+}
+.key-row input:focus { border-color: #d97706; }
+.key-label { font-size: 0.75rem; color: #666; margin-bottom: 6px; }
+.key-hint  { font-size: 0.72rem; color: #444; margin-top: 4px; }
+.key-hint a { color: #d97706; text-decoration: none; }
+.setup-divider { border: none; border-top: 1px solid #1e1e2e; margin: 16px 0; }
+
+/* ── KEY BAR ── */
+.key-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 0.72rem; color: #555; margin-bottom: 14px;
+  padding-bottom: 12px; border-bottom: 1px solid #1e1e2e;
+}
+.key-bar span { font-family: monospace; color: #444; }
+.key-bar button { background: none; border: none; color: #d97706; font-size: 0.72rem; cursor: pointer; text-decoration: underline; }
+.key-badges { display: flex; gap: 8px; }
+.badge {
+  font-size: 0.65rem; padding: 2px 8px; border-radius: 99px; font-weight: 600;
+}
+.badge.ok  { background: rgba(34,197,94,0.12); color: #22c55e; border: 1px solid rgba(34,197,94,0.3); }
+.badge.off { background: rgba(100,100,100,0.12); color: #666; border: 1px solid #333; }
+
+/* ── SCANNER ── */
+.cam-wrap {
+  position: relative; width: 100%; border-radius: 12px;
+  overflow: hidden; background: #000; aspect-ratio: 4/3;
+}
+#video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.guide-frame {
+  position: absolute; inset: 12%;
+  border: 2px solid rgba(217,119,6,0.7); border-radius: 10px;
+  pointer-events: none; box-shadow: 0 0 0 9999px rgba(0,0,0,0.35);
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+.guide-frame.detected {
+  border-color: #22c55e;
+  box-shadow: 0 0 0 9999px rgba(0,0,0,0.35), 0 0 0 3px rgba(34,197,94,0.4);
+}
+.guide-frame::before,.guide-frame::after,.corner-bl,.corner-br {
+  content:''; position:absolute; width:18px; height:18px;
+  border-color:inherit; border-style:solid;
+}
+.guide-frame::before { top:-2px;left:-2px;   border-width:3px 0 0 3px; border-radius:4px 0 0 0; }
+.guide-frame::after  { top:-2px;right:-2px;  border-width:3px 3px 0 0; border-radius:0 4px 0 0; }
+.corner-bl { bottom:-2px;left:-2px;  border-width:0 0 3px 3px; border-radius:0 0 0 4px; }
+.corner-br { bottom:-2px;right:-2px; border-width:0 3px 3px 0; border-radius:0 0 4px 0; }
+.cam-status {
+  position:absolute; top:12px; left:50%; transform:translateX(-50%);
+  background:rgba(0,0,0,0.7); color:#aaa; font-size:0.75rem;
+  padding:4px 12px; border-radius:99px; white-space:nowrap;
+  backdrop-filter:blur(6px); transition:all 0.3s;
+}
+.cam-status.detected { color:#22c55e; }
+.cam-status.counting { color:#d97706; }
+#countdown-wrap { position:absolute; bottom:16px; right:16px; width:48px; height:48px; display:none; }
+#countdown-wrap svg { transform:rotate(-90deg); }
+#countdown-wrap circle {
+  fill:none; stroke:#d97706; stroke-width:4;
+  stroke-dasharray:126; stroke-dashoffset:126;
+  stroke-linecap:round; transition:stroke-dashoffset 0.9s linear;
+}
+#countdown-num {
+  position:absolute; inset:0; display:flex; align-items:center;
+  justify-content:center; font-size:1.1rem; font-weight:700; color:#d97706;
+}
+.flash {
+  position:absolute; inset:0; background:#fff; opacity:0;
+  pointer-events:none; border-radius:12px; transition:opacity 0.05s;
+}
+.flash.active { opacity:0.7; }
+.cam-controls {
+  display:flex; align-items:center; justify-content:space-between;
+  margin-top:14px; gap:12px;
+}
+.auto-toggle {
+  display:flex; align-items:center; gap:8px;
+  font-size:0.82rem; color:#888; cursor:pointer; user-select:none;
+}
+.toggle-switch {
+  width:38px; height:22px; background:#333; border-radius:99px;
+  position:relative; transition:background 0.2s; flex-shrink:0;
+}
+.toggle-switch.on { background:#d97706; }
+.toggle-switch::after {
+  content:''; position:absolute; top:3px; left:3px;
+  width:16px; height:16px; background:#fff;
+  border-radius:50%; transition:left 0.2s;
+}
+.toggle-switch.on::after { left:19px; }
+.btn-shutter {
+  width:64px; height:64px; border-radius:50%;
+  border:3px solid #d97706; background:rgba(217,119,6,0.15);
+  display:flex; align-items:center; justify-content:center;
+  font-size:1.6rem; cursor:pointer; transition:all 0.15s; flex-shrink:0;
+}
+.btn-shutter:hover  { background:rgba(217,119,6,0.35); transform:scale(1.05); }
+.btn-shutter:active { transform:scale(0.95); }
+.btn-flip {
+  background:#222; border:1px solid #333; border-radius:10px;
+  padding:10px 14px; color:#aaa; font-size:0.82rem; cursor:pointer; transition:all 0.15s;
+}
+.btn-flip:hover { background:#2a2a38; color:#fff; }
+#snap-canvas { display:none; }
+#no-cam-msg { display:none; text-align:center; padding:32px 16px; color:#666; font-size:0.9rem; }
+
+/* ── LOADER ── */
+#loader { display:none; text-align:center; padding:16px 0; }
+.spinner {
+  width:36px; height:36px; border:3px solid #333; border-top-color:#d97706;
+  border-radius:50%; animation:spin 0.75s linear infinite; margin:0 auto 12px;
+}
+@keyframes spin { to { transform:rotate(360deg); } }
+#loader p { color:#888; font-size:0.88rem; }
+
+/* ── RESULTS ── */
+#result-wrap { display:none; width:100%; max-width:680px; }
+.section-label {
+  font-size:0.72rem; font-weight:700; text-transform:uppercase;
+  letter-spacing:1px; color:#d97706; margin-bottom:14px;
+  display:flex; align-items:center; gap:8px;
+}
+.section-label::after { content:''; flex:1; height:1px; background:#2a2a38; }
+.contact-strip { display:flex; flex-direction:column; gap:8px; }
+.contact-row { display:flex; gap:10px; align-items:flex-start; }
+.contact-row .lbl { font-size:0.75rem; color:#666; width:80px; flex-shrink:0; padding-top:2px; }
+.contact-row .val { font-size:0.9rem; color:#e0e0ee; flex:1; }
+.contact-row .val.name { font-size:1.1rem; font-weight:700; color:#fff; }
+.info-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+@media(max-width:480px){ .info-grid { grid-template-columns:1fr; } }
+.info-item { background:#12121a; border:1px solid #222; border-radius:10px; padding:14px 16px; }
+.info-item .key   { font-size:0.72rem; color:#666; text-transform:uppercase; letter-spacing:0.6px; margin-bottom:5px; }
+.info-item .value { font-size:0.88rem; color:#ccc; line-height:1.4; }
+.tips-list { list-style:none; display:flex; flex-direction:column; gap:10px; }
+.tips-list li {
+  background:#12121a; border:1px solid #1e2535;
+  border-left:3px solid #d97706; border-radius:8px;
+  padding:12px 14px; font-size:0.88rem; color:#bbb; line-height:1.5;
+}
+
+/* ── VOICE ── */
+.voice-tabs { display:flex; gap:8px; margin-bottom:14px; }
+.voice-tab {
+  flex:1; padding:9px; border-radius:8px; border:1px solid #333;
+  background:#12121a; color:#888; font-size:0.82rem;
+  cursor:pointer; text-align:center; transition:all 0.15s;
+}
+.voice-tab.active { border-color:#d97706; color:#d97706; background:rgba(217,119,6,0.08); }
+.voice-box {
+  background:#12121a; border:1px solid #2a2a38;
+  border-radius:10px; padding:14px; margin-bottom:12px; position:relative;
+}
+.voice-text {
+  width:100%; min-height:80px; font-size:0.88rem; color:#ccc;
+  line-height:1.6; outline:none; border:none; background:transparent;
+  resize:none; font-family:inherit;
+}
+.voice-text::placeholder { color:#444; }
+
+/* Whisper recording indicator */
+.rec-indicator {
+  position:absolute; top:10px; right:10px;
+  display:none; align-items:center; gap:6px;
+  font-size:0.72rem; color:#ef4444;
+}
+.rec-dot {
+  width:8px; height:8px; border-radius:50%; background:#ef4444;
+  animation:pulse 1s infinite;
+}
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+.voice-controls { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+.btn-mic {
+  display:flex; align-items:center; gap:6px;
+  background:#1e1e2e; border:1px solid #444; border-radius:8px;
+  padding:9px 14px; color:#ccc; font-size:0.82rem; cursor:pointer; transition:all 0.15s;
+}
+.btn-mic:hover { border-color:#d97706; color:#d97706; }
+.btn-mic.recording { border-color:#ef4444; color:#ef4444; background:rgba(239,68,68,0.08); }
+.btn-mic:disabled { opacity:0.4; cursor:not-allowed; }
+
+.btn-summarize {
+  flex:1; display:flex; align-items:center; justify-content:center; gap:6px;
+  background:#d97706; border:none; border-radius:8px;
+  padding:9px 16px; color:#fff; font-size:0.82rem; font-weight:600;
+  cursor:pointer; transition:background 0.15s;
+}
+.btn-summarize:hover    { background:#b45309; }
+.btn-summarize:disabled { background:#444; cursor:not-allowed; }
+
+/* Combined memo */
+.memo-box {
+  background:#0d1117; border:1px solid #1e2535;
+  border-left:3px solid #22c55e; border-radius:10px;
+  padding:16px; margin-top:12px; display:none;
+}
+.memo-box .memo-label { font-size:0.7rem; color:#22c55e; text-transform:uppercase; letter-spacing:0.8px; margin-bottom:10px; }
+.memo-section { margin-bottom:12px; }
+.memo-section:last-child { margin-bottom:0; }
+.memo-section-title { font-size:0.75rem; color:#d97706; font-weight:600; margin-bottom:5px; }
+.memo-section-text  { font-size:0.88rem; color:#ccc; line-height:1.6; white-space:pre-wrap; }
+
+/* ── EXPORT ── */
+.export-fields { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px; }
+@media(max-width:480px){ .export-fields { grid-template-columns:1fr; } }
+.export-field { background:#12121a; border:1px solid #222; border-radius:8px; padding:10px 14px; font-size:0.83rem; }
+.export-field span { color:#555; font-size:0.72rem; display:block; margin-bottom:3px; text-transform:uppercase; letter-spacing:0.5px; }
+.export-field p { color:#ccc; }
+
+/* ── BUTTONS ── */
+.btn {
+  display:inline-flex; align-items:center; gap:8px;
+  background:#d97706; color:#fff; border:none; border-radius:10px;
+  padding:12px 24px; font-size:0.9rem; font-weight:600;
+  cursor:pointer; transition:background 0.18s; justify-content:center;
+}
+.btn:hover    { background:#b45309; }
+.btn:disabled { background:#444; cursor:not-allowed; }
+.btn-secondary {
+  background:transparent; border:1px solid #444;
+  color:#aaa; font-size:0.85rem; padding:10px 18px;
+}
+.btn-secondary:hover { background:#222; border-color:#666; color:#eee; }
+.export-btns { display:flex; gap:10px; flex-wrap:wrap; }
+.export-btns .btn { flex:1; min-width:110px; }
+
+.error-box {
+  background:#1a0a0a; border:1px solid #5c1a1a; border-radius:10px;
+  padding:14px; color:#f87171; font-size:0.85rem; display:none; margin-top:12px;
+}
+.info-note {
+  font-size:0.75rem; color:#555; margin-top:10px; line-height:1.5;
+  padding:10px 12px; background:#12121a; border-radius:8px; border:1px solid #1e1e2e;
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="pill">⚡ Powered by Claude + Whisper</div>
+  <h1>Visitenkarten-Scanner</h1>
+  <p>Scan · Analysiere · Diktiere · Exportiere</p>
+</header>
+
+<!-- ── SETUP SCREEN ── -->
+<div class="card setup-screen" id="apikey-screen" style="display:none">
+  <h2>🔑 API-Keys einrichten</h2>
+  <p>Einmalig einrichten — Keys werden lokal in deinem Browser gespeichert.</p>
+
+  <div class="key-label">Anthropic API-Key <span style="color:#d97706">*</span> (Pflicht — für Visitenkarten-Analyse)</div>
+  <div class="key-row">
+    <input type="password" id="key-anthropic" placeholder="sk-ant-api03-…" autocomplete="off" spellcheck="false">
+  </div>
+  <div class="key-hint">→ <a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a> → API Keys → Create Key</div>
+
+  <hr class="setup-divider">
+
+  <div class="key-label">OpenAI API-Key <span style="color:#888">(Optional — für bessere Spracherkennung via Whisper)</span></div>
+  <div class="key-row">
+    <input type="password" id="key-openai" placeholder="sk-proj-… oder sk-…" autocomplete="off" spellcheck="false">
+  </div>
+  <div class="key-hint">→ <a href="https://platform.openai.com/api-keys" target="_blank">platform.openai.com</a> → API Keys → Create new secret key · ~0,006$/Minute</div>
+
+  <button class="btn" style="width:100%;margin-top:20px" onclick="saveKeys()">Speichern & starten</button>
+  <div class="error-box" id="key-error"></div>
+</div>
+
+<!-- ── SCANNER ── -->
+<div class="card" id="scanner-card" style="display:none">
+  <div class="key-bar">
+    <div class="key-badges">
+      <span class="badge ok" id="badge-anthropic">Claude ✓</span>
+      <span class="badge off" id="badge-whisper">Whisper —</span>
+    </div>
+    <button onclick="changeKeys()">Keys ändern</button>
+  </div>
+
+  <div class="cam-wrap" id="cam-wrap">
+    <video id="video" autoplay playsinline muted></video>
+    <div class="guide-frame" id="guide-frame">
+      <span class="corner-bl"></span><span class="corner-br"></span>
+    </div>
+    <div class="cam-status" id="cam-status">Kamera wird gestartet …</div>
+    <div id="countdown-wrap">
+      <svg viewBox="0 0 44 44" width="48" height="48">
+        <circle id="countdown-ring" cx="22" cy="22" r="20"/>
+      </svg>
+      <div id="countdown-num">3</div>
+    </div>
+    <div class="flash" id="flash"></div>
+  </div>
+  <div id="no-cam-msg">📷 Kein Kamerazugriff.<br>Bitte Berechtigung erteilen und neu laden.</div>
+  <canvas id="snap-canvas"></canvas>
+
+  <div class="cam-controls">
+    <label class="auto-toggle" onclick="toggleAuto()">
+      <div class="toggle-switch on" id="auto-toggle-sw"></div>
+      <span id="auto-label">Auto-Scan aktiv</span>
+    </label>
+    <button class="btn-shutter" onclick="captureManual()" title="Jetzt scannen">📸</button>
+    <button class="btn-flip" onclick="flipCamera()">🔄 Flip</button>
+  </div>
+  <div class="error-box" id="scan-error"></div>
+</div>
+
+<!-- ── LOADER ── -->
+<div class="card" style="max-width:680px;width:100%" id="loader">
+  <div class="spinner"></div>
+  <p id="loader-msg">Claude liest die Visitenkarte …</p>
+</div>
+
+<!-- ── RESULTS ── -->
+<div id="result-wrap">
+
+  <div class="card">
+    <div class="section-label">Kontaktdaten</div>
+    <div class="contact-strip" id="contact-strip"></div>
+  </div>
+
+  <div class="card">
+    <div class="section-label">Firmenprofil</div>
+    <div class="info-grid" id="company-grid"></div>
+  </div>
+
+  <div class="card">
+    <div class="section-label">Zur Person</div>
+    <div class="info-grid" id="person-grid"></div>
+  </div>
+
+  <div class="card">
+    <div class="section-label">Gesprächsvorbereitung</div>
+    <ul class="tips-list" id="tips-list"></ul>
+  </div>
+
+  <!-- ── NOTIZEN & MEMO ── -->
+  <div class="card">
+    <div class="section-label">Notizen & Meeting-Memo</div>
+
+    <div class="voice-tabs">
+      <div class="voice-tab active" id="tab-notes"   onclick="switchTab('notes')">📝 Notizen zur Karte</div>
+      <div class="voice-tab"        id="tab-meeting" onclick="switchTab('meeting')">🗣️ Gesprächsnotizen</div>
+    </div>
+
+    <!-- Notes -->
+    <div id="panel-notes">
+      <div class="voice-box">
+        <textarea class="voice-text" id="notes-text" placeholder="Notizen zur Visitenkarte — diktieren oder tippen …" rows="4"></textarea>
+        <div class="rec-indicator" id="rec-notes"><div class="rec-dot"></div> Aufnahme läuft …</div>
+      </div>
+      <div class="voice-controls">
+        <button class="btn-mic" id="mic-notes" onclick="toggleMic('notes')">🎤 Diktieren</button>
+      </div>
+    </div>
+
+    <!-- Meeting -->
+    <div id="panel-meeting" style="display:none">
+      <div class="voice-box">
+        <textarea class="voice-text" id="meeting-text" placeholder="Gesprächsnotizen — was wurde besprochen, welche nächsten Schritte …" rows="5"></textarea>
+        <div class="rec-indicator" id="rec-meeting"><div class="rec-dot"></div> Aufnahme läuft …</div>
+      </div>
+      <div class="voice-controls">
+        <button class="btn-mic" id="mic-meeting" onclick="toggleMic('meeting')">🎤 Diktieren</button>
+      </div>
+    </div>
+
+    <!-- Combined summarize button -->
+    <button class="btn-summarize" id="btn-memo" onclick="createCombinedMemo()" style="margin-top:14px;width:100%">
+      ✨ Vollständiges Meeting-Memo erstellen
+    </button>
+    <p class="info-note">Claude kombiniert Visitenkarten-Infos, Notizen und Gesprächsnotizen zu einem strukturierten Memo.</p>
+
+    <!-- Combined memo output -->
+    <div class="memo-box" id="combined-memo">
+      <div class="memo-label">✅ Meeting-Memo</div>
+      <div id="memo-sections"></div>
+    </div>
+  </div>
+
+  <!-- ── EXPORT ── -->
+  <div class="card">
+    <div class="section-label">Export</div>
+    <div class="export-fields" id="export-fields"></div>
+    <div class="export-btns">
+      <button class="btn" onclick="exportVCard()">📥 vCard (.vcf)</button>
+      <button class="btn btn-secondary" onclick="exportFull()">📄 Vollbericht (.txt)</button>
+      <button class="btn btn-secondary" onclick="resetScanner()">🔄 Neue Karte</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ── KEYS ──
+let anthropicKey = localStorage.getItem('claude_api_key') || '';
+let openaiKey    = localStorage.getItem('openai_api_key') || '';
+
+function init() {
+  if (anthropicKey) showScanner();
+  else document.getElementById('apikey-screen').style.display = 'block';
+}
+
+function saveKeys() {
+  const ak = document.getElementById('key-anthropic').value.trim();
+  const ok = document.getElementById('key-openai').value.trim();
+  if (!ak.startsWith('sk-ant-')) {
+    showErr('key-error', 'Anthropic Key muss mit sk-ant- beginnen.');
+    return;
+  }
+  anthropicKey = ak;
+  localStorage.setItem('claude_api_key', ak);
+  if (ok) {
+    openaiKey = ok;
+    localStorage.setItem('openai_api_key', ok);
+  }
+  document.getElementById('apikey-screen').style.display = 'none';
+  showScanner();
+}
+
+function changeKeys() {
+  stopCamera();
+  document.getElementById('scanner-card').style.display = 'none';
+  document.getElementById('result-wrap').style.display = 'none';
+  document.getElementById('key-anthropic').value = anthropicKey;
+  document.getElementById('key-openai').value = openaiKey;
+  document.getElementById('apikey-screen').style.display = 'block';
+}
+
+function showScanner() {
+  document.getElementById('badge-whisper').className = openaiKey ? 'badge ok' : 'badge off';
+  document.getElementById('badge-whisper').textContent = openaiKey ? 'Whisper ✓' : 'Whisper —';
+  document.getElementById('scanner-card').style.display = 'block';
+  startCamera();
+}
+
+// ── CAMERA ──
+let stream=null, facingMode='environment';
+let autoEnabled=true, detectInterval=null, countdownTimer=null;
+let isAnalyzing=false, currentData=null;
+let cardDetected=false, stableFrames=0, countdownActive=false;
+const STABLE=8;
+
+const video=document.getElementById('video');
+const canvas=document.getElementById('snap-canvas');
+const ctx=canvas.getContext('2d');
+const guideFrame=document.getElementById('guide-frame');
+const camStatus=document.getElementById('cam-status');
+const cdWrap=document.getElementById('countdown-wrap');
+const cdRing=document.getElementById('countdown-ring');
+const cdNum=document.getElementById('countdown-num');
+const flash=document.getElementById('flash');
+const loaderEl=document.getElementById('loader');
+const loaderMsg=document.getElementById('loader-msg');
+
+async function startCamera() {
+  try {
+    if(stream) stream.getTracks().forEach(t=>t.stop());
+    stream=await navigator.mediaDevices.getUserMedia({
+      video:{facingMode,width:{ideal:1280},height:{ideal:960}},audio:false
+    });
+    video.srcObject=stream; video.play();
+    camStatus.textContent='Karte in den Rahmen halten …';
+    startDetectionLoop();
+  } catch(e) {
+    document.getElementById('cam-wrap').style.display='none';
+    document.getElementById('no-cam-msg').style.display='block';
+    document.querySelector('.cam-controls').style.display='none';
+  }
+}
+
+function stopCamera() {
+  if(stream) stream.getTracks().forEach(t=>t.stop());
+  clearInterval(detectInterval);
+}
+
+function flipCamera() { facingMode=facingMode==='environment'?'user':'environment'; startCamera(); }
+
+function detectCardInFrame() {
+  if(!video.videoWidth) return false;
+  canvas.width=160; canvas.height=120;
+  ctx.drawImage(video,0,0,160,120);
+  const data=ctx.getImageData(16,12,128,96).data;
+  let sum=0,sumSq=0; const px=128*96;
+  for(let i=0;i<data.length;i+=4){
+    const l=0.299*data[i]+0.587*data[i+1]+0.114*data[i+2];
+    sum+=l; sumSq+=l*l;
+  }
+  const mean=sum/px, variance=sumSq/px-mean*mean;
+  return mean>60&&mean<230&&variance>300;
+}
+
+function startDetectionLoop() {
+  if(detectInterval) clearInterval(detectInterval);
+  detectInterval=setInterval(()=>{
+    if(!autoEnabled||isAnalyzing) return;
+    const det=detectCardInFrame();
+    if(det){
+      stableFrames++;
+      if(!cardDetected){
+        cardDetected=true;
+        guideFrame.classList.add('detected');
+        camStatus.textContent='Karte erkannt …';
+        camStatus.className='cam-status detected';
+      }
+      if(stableFrames>=STABLE&&!countdownActive) startCountdown();
+    } else {
+      stableFrames=0;
+      if(cardDetected){
+        cardDetected=false;
+        guideFrame.classList.remove('detected');
+        camStatus.textContent='Karte in den Rahmen halten …';
+        camStatus.className='cam-status';
+        cancelCountdown();
+      }
+    }
+  },120);
+}
+
+function startCountdown() {
+  countdownActive=true; cdWrap.style.display='block';
+  camStatus.textContent='Scan in 3 …'; camStatus.className='cam-status counting';
+  let count=3; cdNum.textContent=count; cdRing.style.strokeDashoffset='0';
+  countdownTimer=setInterval(()=>{
+    count--; cdNum.textContent=count;
+    cdRing.style.strokeDashoffset=String((3-count)/3*126);
+    if(count<=0){ clearInterval(countdownTimer); captureAndAnalyze(); }
+    else camStatus.textContent=`Scan in ${count} …`;
+  },1000);
+}
+
+function cancelCountdown() {
+  countdownActive=false; clearInterval(countdownTimer);
+  cdWrap.style.display='none'; cdRing.style.strokeDashoffset='126';
+}
+
+function captureManual() { if(isAnalyzing) return; cancelCountdown(); captureAndAnalyze(); }
+
+function captureAndAnalyze() {
+  if(!video.videoWidth||isAnalyzing) return;
+  isAnalyzing=true;
+  flash.classList.add('active');
+  setTimeout(()=>flash.classList.remove('active'),120);
+  canvas.width=video.videoWidth; canvas.height=video.videoHeight;
+  ctx.drawImage(video,0,0);
+  const b64=canvas.toDataURL('image/jpeg',0.9).split(',')[1];
+  clearInterval(detectInterval);
+  showLoader(); analyzeCard(b64);
+}
+
+// ── LOADER ──
+const lMsgs=['Claude liest die Visitenkarte …','Firmendaten werden recherchiert …','Gesprächstipps werden generiert …','Briefing wird zusammengestellt …'];
+let loaderInt;
+function showLoader(){
+  document.getElementById('scanner-card').style.display='none';
+  loaderEl.style.display='block'; let i=0; loaderMsg.textContent=lMsgs[0];
+  loaderInt=setInterval(()=>{i=(i+1)%lMsgs.length; loaderMsg.textContent=lMsgs[i];},2400);
+}
+function hideLoader(){ clearInterval(loaderInt); loaderEl.style.display='none'; }
+
+// ── CLAUDE API ──
+async function callClaude(messages, maxTokens=1200) {
+  const res=await fetch('https://api.anthropic.com/v1/messages',{
+    method:'POST',
+    headers:{
+      'Content-Type':'application/json',
+      'x-api-key':anthropicKey,
+      'anthropic-version':'2023-06-01',
+      'anthropic-dangerous-direct-browser-access':'true'
+    },
+    body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:maxTokens,messages})
+  });
+  const data=await res.json();
+  if(data.error) throw new Error(data.error.message);
+  return data.content?.find(b=>b.type==='text')?.text||'';
+}
+
+async function analyzeCard(b64) {
+  const prompt=`Du bist ein professioneller Business-Intelligence-Assistent. Analysiere diese Visitenkarte.
+
+Gib AUSSCHLIESSLICH ein JSON-Objekt zurück (kein Markdown, keine Backticks):
+
+{
+  "contact":{"name":"","title":"","company":"","email":"","phone":"","mobile":"","website":"","address":""},
+  "company_profile":{"industry":"","size":"","products":"","hq":"","founded":"","positioning":""},
+  "person_profile":{"role_scope":"","seniority":"","linkedin_hint":"","expertise":""},
+  "conversation_tips":["Tipp 1","Tipp 2","Tipp 3","Tipp 4"]
+}
+
+Nutze dein Allgemeinwissen über das Unternehmen. Antworte auf Deutsch.`;
+
+  try {
+    const text=await callClaude([{role:'user',content:[
+      {type:'image',source:{type:'base64',media_type:'image/jpeg',data:b64}},
+      {type:'text',text:prompt}
+    ]}]);
+    const data=JSON.parse(text.replace(/```json|```/g,'').trim());
+    currentData=data; hideLoader(); renderResults(data);
+  } catch(err) {
+    hideLoader();
+    document.getElementById('scanner-card').style.display='block';
+    isAnalyzing=false; startCamera();
+    showErr('scan-error','Fehler: '+err.message);
+  }
+}
+
+// ── RENDER ──
+function renderResults(d) {
+  const c=d.contact;
+  document.getElementById('contact-strip').innerHTML=[
+    ['Name',c.name,'name'],['Titel',c.title],['Firma',c.company],
+    ['E-Mail',c.email],['Telefon',c.phone],['Mobil',c.mobile],
+    ['Webseite',c.website],['Adresse',c.address]
+  ].filter(([,v])=>v)
+   .map(([l,v,cls])=>`<div class="contact-row"><span class="lbl">${l}</span><span class="val ${cls||''}">${v}</span></div>`).join('');
+
+  const cp=d.company_profile;
+  document.getElementById('company-grid').innerHTML=[
+    ['Branche',cp.industry],['Größe',cp.size],['Hauptsitz',cp.hq],
+    ['Gründungsjahr',cp.founded],['Kernprodukte',cp.products],['Positionierung',cp.positioning]
+  ].map(([k,v])=>`<div class="info-item"><div class="key">${k}</div><div class="value">${v||'–'}</div></div>`).join('');
+
+  const pp=d.person_profile;
+  document.getElementById('person-grid').innerHTML=[
+    ['Aufgabenbereich',pp.role_scope],['Seniorität',pp.seniority],
+    ['Fachgebiete',pp.expertise],['LinkedIn-Suche',pp.linkedin_hint]
+  ].map(([k,v])=>`<div class="info-item"><div class="key">${k}</div><div class="value">${v||'–'}</div></div>`).join('');
+
+  document.getElementById('tips-list').innerHTML=(d.conversation_tips||[]).map(t=>`<li>${t}</li>`).join('');
+
+  document.getElementById('export-fields').innerHTML=[
+    ['Name',c.name],['Firma',c.company],['Titel',c.title],
+    ['E-Mail',c.email],['Telefon',c.phone],['Webseite',c.website]
+  ].filter(([,v])=>v)
+   .map(([k,v])=>`<div class="export-field"><span>${k}</span><p>${v}</p></div>`).join('');
+
+  document.getElementById('notes-text').value='';
+  document.getElementById('meeting-text').value='';
+  document.getElementById('combined-memo').style.display='none';
+
+  document.getElementById('result-wrap').style.display='block';
+  document.getElementById('result-wrap').scrollIntoView({behavior:'smooth'});
+}
+
+// ── WHISPER RECORDING ──
+let mediaRecorder=null, audioChunks=[], isRecording=false, activeRecWhich=null;
+
+async function toggleMic(which) {
+  if(isRecording && activeRecWhich===which) {
+    // Stop recording
+    mediaRecorder.stop();
+    return;
+  }
+  if(isRecording) {
+    mediaRecorder.stop();
+    await new Promise(r=>setTimeout(r,300));
+  }
+
+  if(openaiKey) {
+    await startWhisperRecording(which);
+  } else {
+    startBrowserSpeech(which);
+  }
+}
+
+async function startWhisperRecording(which) {
+  try {
+    const micStream=await navigator.mediaDevices.getUserMedia({audio:true});
+    audioChunks=[];
+    mediaRecorder=new MediaRecorder(micStream, {mimeType: getSupportedMimeType()});
+
+    const btn=document.getElementById('mic-'+which);
+    const rec=document.getElementById('rec-'+which);
+    btn.textContent='⏹️ Stopp'; btn.classList.add('recording');
+    rec.style.display='flex'; isRecording=true; activeRecWhich=which;
+
+    mediaRecorder.ondataavailable=e=>{ if(e.data.size>0) audioChunks.push(e.data); };
+
+    mediaRecorder.onstop=async()=>{
+      btn.textContent='⏳ Transkribiere …'; btn.disabled=true;
+      rec.style.display='none'; isRecording=false;
+
+      const mimeType=getSupportedMimeType();
+      const audioBlob=new Blob(audioChunks,{type:mimeType});
+      micStream.getTracks().forEach(t=>t.stop());
+
+      try {
+        const transcript=await transcribeWithWhisper(audioBlob, mimeType);
+        const ta=document.getElementById(which==='notes'?'notes-text':'meeting-text');
+        ta.value=(ta.value?ta.value+' ':'')+transcript;
+      } catch(err) {
+        alert('Whisper Fehler: '+err.message);
+      } finally {
+        btn.textContent='🎤 Diktieren'; btn.disabled=false; btn.classList.remove('recording');
+      }
+    };
+
+    mediaRecorder.start();
+  } catch(e) {
+    alert('Mikrofon-Zugriff verweigert: '+e.message);
+  }
+}
+
+function getSupportedMimeType() {
+  const types=['audio/webm;codecs=opus','audio/webm','audio/mp4','audio/ogg'];
+  for(const t of types){ if(MediaRecorder.isTypeSupported(t)) return t; }
+  return 'audio/webm';
+}
+
+async function transcribeWithWhisper(audioBlob, mimeType) {
+  const ext = mimeType.includes('mp4')?'m4a':mimeType.includes('ogg')?'ogg':'webm';
+  const formData=new FormData();
+  formData.append('file', audioBlob, `recording.${ext}`);
+  formData.append('model','whisper-1');
+  formData.append('language','de');
+
+  const res=await fetch('https://api.openai.com/v1/audio/transcriptions',{
+    method:'POST',
+    headers:{'Authorization':'Bearer '+openaiKey},
+    body:formData
+  });
+  const data=await res.json();
+  if(data.error) throw new Error(data.error.message);
+  return data.text||'';
+}
+
+// Fallback: Browser Speech API
+let browserRecognition=null;
+function startBrowserSpeech(which) {
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){ alert('Keine Spracherkennung verfügbar. Bitte OpenAI Key eingeben für Whisper.'); return; }
+
+  if(browserRecognition) browserRecognition.stop();
+  browserRecognition=new SR();
+  browserRecognition.lang='de-DE';
+  browserRecognition.continuous=true;
+  browserRecognition.interimResults=true;
+
+  const ta=document.getElementById(which==='notes'?'notes-text':'meeting-text');
+  const btn=document.getElementById('mic-'+which);
+  let base=ta.value;
+
+  btn.textContent='⏹️ Stopp'; btn.classList.add('recording');
+  isRecording=true; activeRecWhich=which;
+
+  browserRecognition.onresult=e=>{
+    let interim='',final='';
+    for(let i=e.resultIndex;i<e.results.length;i++){
+      if(e.results[i].isFinal) final+=e.results[i][0].transcript+' ';
+      else interim+=e.results[i][0].transcript;
+    }
+    if(final) base+=final;
+    ta.value=base+interim;
+  };
+  browserRecognition.onend=()=>{
+    btn.textContent='🎤 Diktieren'; btn.classList.remove('recording');
+    isRecording=false; activeRecWhich=null;
+  };
+  browserRecognition.onerror=()=>{
+    btn.textContent='🎤 Diktieren'; btn.classList.remove('recording');
+    isRecording=false; activeRecWhich=null;
+  };
+
+  // Stop when mic button pressed again via mediaRecorder mock
+  mediaRecorder={ stop: ()=>browserRecognition.stop() };
+  browserRecognition.start();
+}
+
+// ── COMBINED MEMO ──
+async function createCombinedMemo() {
+  const notes   = document.getElementById('notes-text').value.trim();
+  const meeting = document.getElementById('meeting-text').value.trim();
+
+  if(!notes && !meeting) {
+    alert('Bitte zuerst Notizen oder Gesprächsnotizen eingeben.');
+    return;
+  }
+
+  const btn=document.getElementById('btn-memo');
+  btn.disabled=true; btn.textContent='⏳ Memo wird erstellt …';
+
+  const c  = currentData?.contact;
+  const cp = currentData?.company_profile;
+  const pp = currentData?.person_profile;
+
+  const context=`
+Kontakt: ${c?.name||''} | ${c?.title||''} | ${c?.company||''}
+Branche: ${cp?.industry||''} | Produkte: ${cp?.products||''}
+Rolle: ${pp?.role_scope||''}
+${notes    ? `\nNotizen zur Visitenkarte:\n${notes}` : ''}
+${meeting  ? `\nGesprächsnotizen:\n${meeting}` : ''}
+`.trim();
+
+  const prompt=`Du bist ein professioneller Business-Assistent. Erstelle aus folgenden Informationen ein vollständiges, strukturiertes Meeting-Memo auf Deutsch.
+
+${context}
+
+Erstelle das Memo mit diesen 4 Abschnitten — gib AUSSCHLIESSLICH JSON zurück:
+{
+  "kontakt_zusammenfassung": "2-3 Sätze über die Person und das Unternehmen basierend auf allen Infos",
+  "besprochene_themen": "Was wurde besprochen (aus den Notizen extrahiert)",
+  "naechste_schritte": "Konkrete nächste Schritte und Vereinbarungen",
+  "followup_aktionen": "Was muss ich als nächstes tun — mit Zeitrahmen falls erkennbar"
+}`;
+
+  try {
+    const text=await callClaude([{role:'user',content:prompt}], 800);
+    const data=JSON.parse(text.replace(/```json|```/g,'').trim());
+
+    const sections=[
+      ['👤 Kontakt & Unternehmen', data.kontakt_zusammenfassung],
+      ['💬 Besprochene Themen',    data.besprochene_themen],
+      ['✅ Nächste Schritte',      data.naechste_schritte],
+      ['📌 Follow-up Aktionen',    data.followup_aktionen],
+    ];
+
+    document.getElementById('memo-sections').innerHTML=sections
+      .filter(([,v])=>v)
+      .map(([title,text])=>`
+        <div class="memo-section">
+          <div class="memo-section-title">${title}</div>
+          <div class="memo-section-text">${text}</div>
+        </div>`).join('');
+
+    document.getElementById('combined-memo').style.display='block';
+    document.getElementById('combined-memo').scrollIntoView({behavior:'smooth'});
+  } catch(err) {
+    alert('Fehler beim Memo: '+err.message);
+  } finally {
+    btn.disabled=false; btn.textContent='✨ Vollständiges Meeting-Memo erstellen';
+  }
+}
+
+// ── TAB / TOGGLE / RESET ──
+function switchTab(tab) {
+  document.getElementById('tab-notes').classList.toggle('active',tab==='notes');
+  document.getElementById('tab-meeting').classList.toggle('active',tab==='meeting');
+  document.getElementById('panel-notes').style.display=tab==='notes'?'block':'none';
+  document.getElementById('panel-meeting').style.display=tab==='meeting'?'block':'none';
+}
+
+function toggleAuto(){
+  autoEnabled=!autoEnabled;
+  document.getElementById('auto-toggle-sw').className='toggle-switch'+(autoEnabled?' on':'');
+  document.getElementById('auto-label').textContent=autoEnabled?'Auto-Scan aktiv':'Auto-Scan aus';
+  if(!autoEnabled){ cancelCountdown(); stableFrames=0; cardDetected=false; guideFrame.classList.remove('detected'); }
+}
+
+function resetScanner(){
+  document.getElementById('result-wrap').style.display='none';
+  document.getElementById('scanner-card').style.display='block';
+  isAnalyzing=false; currentData=null; stableFrames=0;
+  cardDetected=false; countdownActive=false;
+  camStatus.textContent='Karte in den Rahmen halten …';
+  camStatus.className='cam-status';
+  guideFrame.classList.remove('detected');
+  cancelCountdown(); startCamera();
+}
+
+// ── EXPORT ──
+function exportVCard(){
+  if(!currentData) return;
+  const c=currentData.contact;
+  const parts=(c.name||'').split(' ');
+  const last=parts.pop()||'',first=parts.join(' ');
+  const lines=['BEGIN:VCARD','VERSION:3.0',
+    `FN:${c.name||''}`,`N:${last};${first};;;`,
+    c.title?`TITLE:${c.title}`:'', c.company?`ORG:${c.company}`:'',
+    c.email?`EMAIL:${c.email}`:'', c.phone?`TEL;TYPE=WORK:${c.phone}`:'',
+    c.mobile?`TEL;TYPE=CELL:${c.mobile}`:'', c.website?`URL:${c.website}`:'',
+    c.address?`ADR:;;${c.address};;;;`:'','END:VCARD'
+  ].filter(Boolean).join('\r\n');
+  dl(new Blob([lines],{type:'text/vcard'}),(c.name||'kontakt').replace(/\s+/g,'_')+'.vcf');
+}
+
+function exportFull(){
+  if(!currentData) return;
+  const c=currentData.contact, cp=currentData.company_profile, pp=currentData.person_profile;
+  const tips=(currentData.conversation_tips||[]).map((t,i)=>`${i+1}. ${t}`).join('\n');
+  const notes=document.getElementById('notes-text').value;
+  const meeting=document.getElementById('meeting-text').value;
+  const memoSections=document.getElementById('memo-sections').innerText;
+
+  const txt=`VISITENKARTEN-BRIEFING
+${'='.repeat(40)}
+Name:      ${c.name}
+Titel:     ${c.title}
+Firma:     ${c.company}
+E-Mail:    ${c.email}
+Telefon:   ${c.phone}
+Webseite:  ${c.website}
+
+FIRMENPROFIL
+${'-'.repeat(30)}
+Branche:        ${cp.industry}
+Größe:          ${cp.size}
+Hauptsitz:      ${cp.hq}
+Kernprodukte:   ${cp.products}
+Positionierung: ${cp.positioning}
+
+ZUR PERSON
+${'-'.repeat(30)}
+Aufgabenbereich: ${pp.role_scope}
+Seniorität:      ${pp.seniority}
+Fachgebiete:     ${pp.expertise}
+LinkedIn:        ${pp.linkedin_hint}
+
+GESPRÄCHSTIPPS
+${'-'.repeat(30)}
+${tips}
+${notes?`\nNOTIZEN\n${'-'.repeat(30)}\n${notes}\n`:''}${meeting?`\nGESPRÄCHSNOTIZEN\n${'-'.repeat(30)}\n${meeting}\n`:''}${memoSections?`\nMEETING-MEMO\n${'-'.repeat(30)}\n${memoSections}\n`:''}
+Erstellt: ${new Date().toLocaleString('de-DE')}`;
+  dl(new Blob([txt],{type:'text/plain'}),(c.name||'kontakt').replace(/\s+/g,'_')+'_briefing.txt');
+}
+
+function dl(blob,name){ const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; a.click(); }
+function showErr(id,msg){ const el=document.getElementById(id); el.textContent=msg; el.style.display='block'; }
+
+init();
+</script>
+</body>
+</html>
