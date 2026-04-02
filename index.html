@@ -1,0 +1,1648 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Visitenkarten-Scanner · Claude</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: #0f0f13; color: #e8e8f0;
+  min-height: 100vh; display: flex; flex-direction: column;
+  align-items: center; padding: 0 0 80px;
+}
+
+/* ── NAV ── */
+.nav {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  background: #1a1a24; border-top: 1px solid #2a2a38;
+  display: flex; z-index: 100;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.nav-btn {
+  flex: 1; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; padding: 10px 0; gap: 4px;
+  color: #555; font-size: 0.68rem; cursor: pointer;
+  border: none; background: none; transition: color 0.15s; position: relative;
+}
+.nav-btn.active { color: #d97706; }
+.nav-btn .nav-icon { font-size: 1.3rem; }
+.nav-badge {
+  position: absolute; top: 6px; right: calc(50% - 20px);
+  background: #d97706; color: #fff; font-size: 0.6rem;
+  font-weight: 700; padding: 1px 5px; border-radius: 99px; display: none;
+}
+
+/* ── PAGES ── */
+.page { display: none; width: 100%; max-width: 680px; padding: 24px 16px 16px; }
+.page.active { display: block; }
+.page-header { text-align: center; margin-bottom: 20px; }
+.pill { display: inline-block; background: #d97706; color: #fff; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; padding: 3px 10px; border-radius: 99px; margin-bottom: 10px; }
+.page-header h1 { font-size: 1.4rem; font-weight: 700; color: #fff; }
+.page-header p  { margin-top: 5px; font-size: 0.85rem; color: #777; }
+
+/* ── CARDS ── */
+.card { background: #1a1a24; border: 1px solid #2a2a38; border-radius: 16px; padding: 20px; width: 100%; margin-bottom: 16px; }
+
+/* ── SETUP ── */
+.setup-screen h2 { font-size: 1.1rem; color: #fff; margin-bottom: 8px; }
+.setup-screen p  { font-size: 0.85rem; color: #777; margin-bottom: 16px; line-height: 1.5; }
+.key-label { font-size: 0.75rem; color: #666; margin-bottom: 6px; }
+.key-row { display: flex; gap: 8px; margin-bottom: 8px; }
+.key-row input { flex: 1; background: #12121a; border: 1px solid #333; border-radius: 10px; padding: 11px 14px; color: #e8e8f0; font-size: 0.85rem; outline: none; font-family: inherit; }
+.key-row input[type=password] { font-family: monospace; }
+.key-row input:focus { border-color: #d97706; }
+.key-hint { font-size: 0.72rem; color: #444; margin-top: 4px; line-height: 1.4; }
+.key-hint a { color: #d97706; text-decoration: none; }
+.setup-divider { border: none; border-top: 1px solid #1e1e2e; margin: 16px 0; }
+
+/* ── KEY BAR ── */
+.key-bar { display: flex; align-items: center; justify-content: space-between; font-size: 0.72rem; color: #555; margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid #1e1e2e; }
+.key-badges { display: flex; gap: 6px; flex-wrap: wrap; }
+.badge { font-size: 0.65rem; padding: 2px 8px; border-radius: 99px; font-weight: 600; }
+.badge.ok  { background: rgba(34,197,94,0.12); color: #22c55e; border: 1px solid rgba(34,197,94,0.3); }
+.badge.off { background: rgba(100,100,100,0.12); color: #666; border: 1px solid #333; }
+.key-bar button { background: none; border: none; color: #d97706; font-size: 0.72rem; cursor: pointer; text-decoration: underline; }
+
+/* ── LANGUAGE TOGGLE ── */
+.lang-bar { display: flex; align-items: center; gap: 10px; background: #12121a; border: 1px solid #2a2a38; border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; }
+.lang-bar .lang-label { font-size: 0.78rem; color: #888; flex: 1; }
+.lang-detected { font-size: 0.7rem; color: #d97706; }
+.lang-switch { display: flex; background: #1a1a24; border-radius: 8px; border: 1px solid #333; overflow: hidden; }
+.lang-btn { padding: 6px 14px; font-size: 0.82rem; font-weight: 600; cursor: pointer; border: none; background: transparent; color: #666; transition: all 0.15s; }
+.lang-btn.active { background: #d97706; color: #fff; }
+
+/* ── SCANNER CAM ── */
+.cam-wrap { position: relative; width: 100%; border-radius: 12px; overflow: hidden; background: #000; aspect-ratio: 4/3; }
+#video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.guide-frame { position: absolute; inset: 12%; border: 2px solid rgba(217,119,6,0.7); border-radius: 10px; pointer-events: none; box-shadow: 0 0 0 9999px rgba(0,0,0,0.35); transition: border-color 0.3s, box-shadow 0.3s; }
+.guide-frame.detected { border-color: #22c55e; box-shadow: 0 0 0 9999px rgba(0,0,0,0.35), 0 0 0 3px rgba(34,197,94,0.4); }
+.guide-frame::before,.guide-frame::after,.corner-bl,.corner-br { content:''; position:absolute; width:18px; height:18px; border-color:inherit; border-style:solid; }
+.guide-frame::before { top:-2px;left:-2px; border-width:3px 0 0 3px; border-radius:4px 0 0 0; }
+.guide-frame::after  { top:-2px;right:-2px; border-width:3px 3px 0 0; border-radius:0 4px 0 0; }
+.corner-bl { bottom:-2px;left:-2px; border-width:0 0 3px 3px; border-radius:0 0 0 4px; }
+.corner-br { bottom:-2px;right:-2px; border-width:0 3px 3px 0; border-radius:0 0 4px 0; }
+.cam-status { position:absolute; top:12px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.7); color:#aaa; font-size:0.75rem; padding:4px 12px; border-radius:99px; white-space:nowrap; backdrop-filter:blur(6px); transition:all 0.3s; }
+.cam-status.detected { color:#22c55e; }
+.cam-status.counting { color:#d97706; }
+#countdown-wrap { position:absolute; bottom:16px; right:16px; width:48px; height:48px; display:none; }
+#countdown-wrap svg { transform:rotate(-90deg); }
+#countdown-wrap circle { fill:none; stroke:#d97706; stroke-width:4; stroke-dasharray:126; stroke-dashoffset:126; stroke-linecap:round; transition:stroke-dashoffset 0.9s linear; }
+#countdown-num { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:1.1rem; font-weight:700; color:#d97706; }
+.flash { position:absolute; inset:0; background:#fff; opacity:0; pointer-events:none; border-radius:12px; transition:opacity 0.05s; }
+.flash.active { opacity:0.7; }
+.cam-controls { display:flex; align-items:center; justify-content:space-between; margin-top:14px; gap:12px; }
+.auto-toggle { display:flex; align-items:center; gap:8px; font-size:0.82rem; color:#888; cursor:pointer; user-select:none; }
+.toggle-switch { width:38px; height:22px; background:#333; border-radius:99px; position:relative; transition:background 0.2s; flex-shrink:0; }
+.toggle-switch.on { background:#d97706; }
+.toggle-switch::after { content:''; position:absolute; top:3px; left:3px; width:16px; height:16px; background:#fff; border-radius:50%; transition:left 0.2s; }
+.toggle-switch.on::after { left:19px; }
+.btn-shutter { width:64px; height:64px; border-radius:50%; border:3px solid #d97706; background:rgba(217,119,6,0.15); display:flex; align-items:center; justify-content:center; font-size:1.6rem; cursor:pointer; transition:all 0.15s; flex-shrink:0; }
+.btn-shutter:hover  { background:rgba(217,119,6,0.35); transform:scale(1.05); }
+.btn-shutter:active { transform:scale(0.95); }
+.btn-flip { background:#222; border:1px solid #333; border-radius:10px; padding:10px 14px; color:#aaa; font-size:0.82rem; cursor:pointer; }
+.btn-flip:hover { background:#2a2a38; color:#fff; }
+#snap-canvas { display:none; }
+#no-cam-msg { display:none; text-align:center; padding:32px 16px; color:#666; font-size:0.9rem; }
+
+/* ── LOADER ── */
+#loader { display:none; text-align:center; padding:16px 0; }
+.spinner { width:36px; height:36px; border:3px solid #333; border-top-color:#d97706; border-radius:50%; animation:spin 0.75s linear infinite; margin:0 auto 12px; }
+@keyframes spin { to { transform:rotate(360deg); } }
+#loader p { color:#888; font-size:0.88rem; }
+
+/* ── RESULT ── */
+#result-wrap { display:none; }
+.section-label { font-size:0.72rem; font-weight:700; text-transform:uppercase; letter-spacing:1px; color:#d97706; margin-bottom:14px; display:flex; align-items:center; gap:8px; }
+.section-label::after { content:''; flex:1; height:1px; background:#2a2a38; }
+.contact-strip { display:flex; flex-direction:column; gap:8px; }
+.contact-row { display:flex; gap:10px; align-items:flex-start; }
+.contact-row .lbl { font-size:0.75rem; color:#666; width:90px; flex-shrink:0; padding-top:2px; }
+.contact-row .val { font-size:0.9rem; color:#e0e0ee; flex:1; }
+.contact-row .val.name { font-size:1.1rem; font-weight:700; color:#fff; }
+.info-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+@media(max-width:480px){ .info-grid { grid-template-columns:1fr; } }
+.info-item { background:#12121a; border:1px solid #222; border-radius:10px; padding:14px 16px; }
+.info-item .key   { font-size:0.72rem; color:#666; text-transform:uppercase; letter-spacing:0.6px; margin-bottom:5px; }
+.info-item .value { font-size:0.88rem; color:#ccc; line-height:1.4; }
+.tips-list { list-style:none; display:flex; flex-direction:column; gap:10px; }
+.tips-list li { background:#12121a; border:1px solid #1e2535; border-left:3px solid #d97706; border-radius:8px; padding:12px 14px; font-size:0.88rem; color:#bbb; line-height:1.5; }
+.en-badge { display:inline-block; background:rgba(59,130,246,0.15); color:#60a5fa; border:1px solid rgba(59,130,246,0.3); font-size:0.65rem; font-weight:700; padding:1px 7px; border-radius:99px; margin-left:6px; vertical-align:middle; }
+
+/* ── VOICE ── */
+.voice-tabs { display:flex; gap:8px; margin-bottom:14px; }
+.voice-tab { flex:1; padding:9px; border-radius:8px; border:1px solid #333; background:#12121a; color:#888; font-size:0.82rem; cursor:pointer; text-align:center; transition:all 0.15s; }
+.voice-tab.active { border-color:#d97706; color:#d97706; background:rgba(217,119,6,0.08); }
+.voice-box { background:#12121a; border:1px solid #2a2a38; border-radius:10px; padding:14px; margin-bottom:12px; position:relative; }
+.voice-text { width:100%; min-height:80px; font-size:0.88rem; color:#ccc; line-height:1.6; outline:none; border:none; background:transparent; resize:none; font-family:inherit; }
+.voice-text::placeholder { color:#444; }
+.rec-indicator { position:absolute; top:10px; right:10px; display:none; align-items:center; gap:6px; font-size:0.72rem; color:#ef4444; }
+.rec-dot { width:8px; height:8px; border-radius:50%; background:#ef4444; animation:rpulse 1s infinite; }
+@keyframes rpulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+.voice-controls { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+.btn-mic { display:flex; align-items:center; gap:6px; background:#1e1e2e; border:1px solid #444; border-radius:8px; padding:9px 14px; color:#ccc; font-size:0.82rem; cursor:pointer; transition:all 0.15s; }
+.btn-mic:hover { border-color:#d97706; color:#d97706; }
+.btn-mic.recording { border-color:#ef4444; color:#ef4444; background:rgba(239,68,68,0.08); }
+.btn-mic:disabled { opacity:0.4; cursor:not-allowed; }
+.btn-summarize { flex:1; display:flex; align-items:center; justify-content:center; gap:6px; background:#d97706; border:none; border-radius:8px; padding:9px 16px; color:#fff; font-size:0.82rem; font-weight:600; cursor:pointer; transition:background 0.15s; }
+.btn-summarize:hover    { background:#b45309; }
+.btn-summarize:disabled { background:#444; cursor:not-allowed; }
+.memo-box { background:#0d1117; border:1px solid #1e2535; border-left:3px solid #22c55e; border-radius:10px; padding:16px; margin-top:12px; display:none; }
+.memo-box .memo-label { font-size:0.7rem; color:#22c55e; text-transform:uppercase; letter-spacing:0.8px; margin-bottom:10px; }
+.memo-section { margin-bottom:12px; }
+.memo-section:last-child { margin-bottom:0; }
+.memo-section-title { font-size:0.75rem; color:#d97706; font-weight:600; margin-bottom:5px; }
+.memo-section-text  { font-size:0.88rem; color:#ccc; line-height:1.6; white-space:pre-wrap; }
+
+/* ── KARTEI SELECTOR (beim Speichern) ── */
+.kartei-selector { margin-bottom:14px; }
+.kartei-selector label { font-size:0.75rem; color:#666; display:block; margin-bottom:8px; }
+.kartei-chips { display:flex; flex-wrap:wrap; gap:8px; }
+.kartei-chip {
+  padding:7px 14px; border-radius:99px; border:1px solid #333;
+  background:#12121a; color:#888; font-size:0.82rem; cursor:pointer; transition:all 0.15s;
+}
+.kartei-chip.active { border-color:#d97706; color:#d97706; background:rgba(217,119,6,0.08); }
+
+/* ── BUTTONS ── */
+.btn { display:inline-flex; align-items:center; gap:8px; background:#d97706; color:#fff; border:none; border-radius:10px; padding:12px 20px; font-size:0.88rem; font-weight:600; cursor:pointer; transition:background 0.18s; justify-content:center; }
+.btn:hover    { background:#b45309; }
+.btn:disabled { background:#444; cursor:not-allowed; }
+.btn-secondary { background:transparent; border:1px solid #444; color:#aaa; font-size:0.85rem; padding:10px 16px; }
+.btn-secondary:hover { background:#222; border-color:#666; color:#eee; }
+.btn-danger { border-color:#5c1a1a !important; color:#f87171 !important; }
+.btn-danger:hover { background:#1a0a0a !important; }
+.action-row { display:flex; gap:10px; flex-wrap:wrap; }
+.action-row .btn { flex:1; min-width:100px; }
+.info-note { font-size:0.75rem; color:#555; margin-top:10px; line-height:1.5; padding:10px 12px; background:#12121a; border-radius:8px; border:1px solid #1e1e2e; }
+
+/* ── KARTEI PAGE ── */
+.kartei-tab-bar { display:flex; gap:0; margin-bottom:16px; overflow-x:auto; border-radius:10px; border:1px solid #2a2a38; background:#12121a; }
+.kartei-tab {
+  flex-shrink:0; padding:10px 16px; font-size:0.82rem; color:#666;
+  cursor:pointer; border:none; background:transparent; transition:all 0.15s;
+  white-space:nowrap; border-right:1px solid #2a2a38;
+}
+.kartei-tab:last-child { border-right:none; }
+.kartei-tab.active { color:#d97706; background:rgba(217,119,6,0.08); }
+.kartei-tab.add-tab { color:#d97706; font-size:1.1rem; padding:8px 14px; }
+
+.kartei-stats { display:flex; gap:10px; margin-bottom:16px; }
+.stat-box { flex:1; background:#12121a; border:1px solid #222; border-radius:10px; padding:12px; text-align:center; }
+.stat-box .stat-num   { font-size:1.5rem; font-weight:700; color:#d97706; }
+.stat-box .stat-label { font-size:0.72rem; color:#666; margin-top:2px; }
+.stat-box.green .stat-num { color:#22c55e; }
+
+.kartei-list { display:flex; flex-direction:column; gap:10px; }
+.kartei-item { background:#1a1a24; border:1px solid #2a2a38; border-radius:12px; padding:16px; cursor:pointer; transition:border-color 0.15s; }
+.kartei-item:hover { border-color:#d97706; }
+.kartei-item.exported { border-left:3px solid #22c55e; }
+.kartei-item-header { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:6px; }
+.kartei-item-name    { font-size:0.95rem; font-weight:700; color:#fff; }
+.kartei-item-company { font-size:0.82rem; color:#888; margin-top:2px; }
+.kartei-item-meta    { display:flex; flex-direction:column; align-items:flex-end; gap:4px; flex-shrink:0; }
+.kartei-item-date    { font-size:0.72rem; color:#555; }
+.kartei-status { display:inline-block; font-size:0.65rem; font-weight:700; padding:2px 8px; border-radius:99px; }
+.kartei-status.open     { background:rgba(217,119,6,0.15); color:#d97706; border:1px solid rgba(217,119,6,0.3); }
+.kartei-status.exported { background:rgba(34,197,94,0.12); color:#22c55e; border:1px solid rgba(34,197,94,0.3); }
+.kartei-item-notes { font-size:0.8rem; color:#666; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:6px; }
+
+.kartei-actions { display:flex; gap:10px; margin-bottom:16px; flex-wrap:wrap; }
+.kartei-actions .btn { flex:1; min-width:120px; font-size:0.82rem; padding:10px 14px; }
+
+.kartei-empty { text-align:center; padding:48px 16px; color:#555; }
+.kartei-empty .empty-icon { font-size:2.5rem; margin-bottom:12px; }
+
+/* Kartei manage */
+.kartei-manage { display:flex; gap:8px; align-items:center; margin-bottom:12px; }
+.kartei-manage input { flex:1; background:#12121a; border:1px solid #333; border-radius:8px; padding:9px 12px; color:#e8e8f0; font-size:0.85rem; outline:none; }
+.kartei-manage input:focus { border-color:#d97706; }
+
+/* ── DETAIL ── */
+#detail-wrap { display:none; }
+.detail-back { display:flex; align-items:center; gap:8px; background:none; border:none; color:#d97706; font-size:0.88rem; cursor:pointer; padding:0; margin-bottom:16px; }
+
+/* Move to kartei */
+.move-select { width:100%; background:#12121a; border:1px solid #333; border-radius:8px; padding:10px 12px; color:#e8e8f0; font-size:0.85rem; outline:none; margin-bottom:10px; }
+.move-select:focus { border-color:#d97706; }
+
+/* ── ERRORS / SUCCESS ── */
+.error-box   { background:#1a0a0a; border:1px solid #5c1a1a; border-radius:10px; padding:14px; color:#f87171; font-size:0.85rem; display:none; margin-top:12px; }
+.success-box { background:#0d1a12; border:1px solid #166534; border-radius:10px; padding:14px; color:#22c55e; font-size:0.85rem; display:none; margin-top:12px; }
+/* ── TRANSLATOR ── */
+.trans-select {
+  width:100%; background:#12121a; border:1px solid #333;
+  border-radius:10px; padding:10px 12px; color:#e8e8f0;
+  font-size:0.88rem; outline:none; cursor:pointer;
+}
+.trans-select:focus { border-color:#d97706; }
+.conv-bubble { padding:14px 16px; border-radius:12px; }
+.conv-bubble.mine  { background:#1e2535; border:1px solid #2a3a55; border-left:3px solid #d97706; margin-right:20px; }
+.conv-bubble.other { background:#12201a; border:1px solid #1a3025; border-left:3px solid #22c55e; margin-left:20px; }
+.conv-bubble .bubble-orig  { font-size:0.82rem; color:#777; margin-bottom:6px; font-style:italic; }
+.conv-bubble .bubble-trans { font-size:1rem; color:#e8e8f0; line-height:1.5; font-weight:500; }
+.conv-bubble .bubble-meta  { font-size:0.68rem; color:#444; margin-top:8px; display:flex; align-items:center; justify-content:space-between; }
+.btn-speak { background:none; border:none; color:#d97706; cursor:pointer; font-size:0.78rem; padding:0; display:flex; align-items:center; gap:4px; }
+.btn-speak:hover { color:#b45309; }
+.btn-speak.speaking { color:#22c55e; }
+</style>
+</head>
+<body>
+
+<!-- ── PAGE: SETUP ── -->
+<div class="page active" id="page-setup" style="max-width:680px">
+  <div class="page-header">
+    <div class="pill">⚡ Claude · Whisper · DE/EN</div>
+    <h1>Visitenkarten-Scanner</h1>
+    <p>Einmalig einrichten — dann loslegen</p>
+  </div>
+  <div class="card setup-screen">
+    <h2>🔑 API-Keys & Einstellungen</h2>
+    <p>Werden lokal gespeichert, nie weitergegeben.</p>
+
+    <div class="key-label">Anthropic API-Key <span style="color:#d97706">*</span></div>
+    <div class="key-row"><input type="password" id="key-anthropic" placeholder="sk-ant-api03-…" autocomplete="off"></div>
+    <div class="key-hint">→ <a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a> → API Keys → Create Key</div>
+
+    <hr class="setup-divider">
+    <div class="key-label">OpenAI API-Key <span style="color:#888">(Optional — Whisper Spracherkennung)</span></div>
+    <div class="key-row"><input type="password" id="key-openai" placeholder="sk-proj-…" autocomplete="off"></div>
+    <div class="key-hint">→ <a href="https://platform.openai.com/api-keys" target="_blank">platform.openai.com</a> → API Keys · ~0,006$/Min</div>
+
+    <hr class="setup-divider">
+    <div class="key-label">Messe / Event-Name <span style="color:#888">(für CSV-Export als LeadSource)</span></div>
+    <div class="key-row"><input type="text" id="event-name" placeholder="z.B. embedded world 2026" autocomplete="off"></div>
+
+    <hr class="setup-divider">
+    <div class="key-label">Messe-Datei <span style="color:#888">(Optional — Neuheiten & Ankündigungen für Gesprächstipps)</span></div>
+    <div style="background:#12121a;border:1px solid #333;border-radius:10px;padding:14px;margin-bottom:8px">
+      <div id="file-status" style="font-size:0.82rem;color:#666;margin-bottom:10px">Keine Datei geladen</div>
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+        <span class="btn btn-secondary" style="padding:8px 14px;font-size:0.8rem;pointer-events:none">📄 Datei auswählen</span>
+        <span style="font-size:0.75rem;color:#555">PDF, Word (.docx) oder Text (.txt)</span>
+        <input type="file" id="messe-file" accept=".pdf,.docx,.txt,.doc" style="display:none" onchange="loadMesseFile(this)">
+      </label>
+      <button class="btn btn-secondary btn-danger" style="margin-top:10px;padding:6px 12px;font-size:0.75rem;display:none" id="clear-file-btn" onclick="clearMesseFile()">✕ Datei entfernen</button>
+    </div>
+    <div class="key-hint">Die Datei wird lokal im Browser gespeichert und nie hochgeladen. Sie wird bei der Analyse jeder Visitenkarte automatisch berücksichtigt.</div>
+
+    <button class="btn" style="width:100%;margin-top:20px" onclick="saveKeys()">Speichern & starten</button>
+    <div class="error-box" id="key-error"></div>
+  </div>
+</div>
+
+<!-- ── PAGE: SCANNER ── -->
+<div class="page" id="page-scanner" style="max-width:680px">
+  <div class="page-header">
+    <div class="pill">⚡ Claude + Whisper</div>
+    <h1>Scanner</h1>
+  </div>
+
+  <div class="card" id="scanner-card">
+    <div class="key-bar">
+      <div class="key-badges">
+        <span class="badge ok"  id="badge-anthropic">Claude ✓</span>
+        <span class="badge off" id="badge-whisper">Whisper —</span>
+        <span class="badge off" id="badge-file">📄 Datei —</span>
+      </div>
+      <button onclick="showSetup()">Einstellungen</button>
+    </div>
+    <div class="cam-wrap" id="cam-wrap">
+      <video id="video" autoplay playsinline muted></video>
+      <div class="guide-frame" id="guide-frame">
+        <span class="corner-bl"></span><span class="corner-br"></span>
+      </div>
+      <div class="cam-status" id="cam-status">Kamera wird gestartet …</div>
+      <div id="countdown-wrap">
+        <svg viewBox="0 0 44 44" width="48" height="48"><circle id="countdown-ring" cx="22" cy="22" r="20"/></svg>
+        <div id="countdown-num">3</div>
+      </div>
+      <div class="flash" id="flash"></div>
+    </div>
+    <div id="no-cam-msg">📷 Kein Kamerazugriff. Bitte Berechtigung erteilen.</div>
+    <canvas id="snap-canvas"></canvas>
+    <div class="cam-controls">
+      <label class="auto-toggle" onclick="toggleAuto()">
+        <div class="toggle-switch on" id="auto-toggle-sw"></div>
+        <span id="auto-label">Auto-Scan</span>
+      </label>
+      <button class="btn-shutter" onclick="captureManual()">📸</button>
+      <button class="btn-flip" onclick="flipCamera()">🔄</button>
+    </div>
+    <div class="error-box" id="scan-error"></div>
+  </div>
+
+  <div class="card" id="loader">
+    <div class="spinner"></div>
+    <p id="loader-msg">Claude liest die Visitenkarte …</p>
+  </div>
+
+  <div id="result-wrap">
+    <!-- Language bar -->
+    <div class="card">
+      <div class="lang-bar">
+        <div class="lang-label">Analysesprache<br><span class="lang-detected" id="lang-detected-hint"></span></div>
+        <div class="lang-switch">
+          <button class="lang-btn active" id="lang-de" onclick="setLang('de')">🇩🇪 DE</button>
+          <button class="lang-btn"        id="lang-en" onclick="setLang('en')">🇬🇧 EN</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-label">Kontaktdaten</div>
+      <div class="contact-strip" id="contact-strip"></div>
+    </div>
+    <div class="card">
+      <div class="section-label" id="lbl-company">Firmenprofil</div>
+      <div class="info-grid" id="company-grid"></div>
+    </div>
+    <div class="card">
+      <div class="section-label" id="lbl-person">Zur Person</div>
+      <div class="info-grid" id="person-grid"></div>
+    </div>
+    <div class="card">
+      <div class="section-label" id="lbl-tips">Gesprächsvorbereitung</div>
+      <ul class="tips-list" id="tips-list"></ul>
+    </div>
+
+    <div class="card">
+      <div class="section-label">Notizen & Meeting-Memo</div>
+      <div class="voice-tabs">
+        <div class="voice-tab active" id="tab-notes"   onclick="switchTab('notes')">📝 Notizen</div>
+        <div class="voice-tab"        id="tab-meeting" onclick="switchTab('meeting')">🗣️ Gesprächsnotizen</div>
+      </div>
+      <div id="panel-notes">
+        <div class="voice-box">
+          <textarea class="voice-text" id="notes-text" placeholder="Notizen diktieren oder tippen …" rows="3"></textarea>
+          <div class="rec-indicator" id="rec-notes"><div class="rec-dot"></div> Aufnahme …</div>
+        </div>
+        <div class="voice-controls">
+          <button class="btn-mic" id="mic-notes" onclick="toggleMic('notes')">🎤 Diktieren</button>
+        </div>
+      </div>
+      <div id="panel-meeting" style="display:none">
+        <div class="voice-box">
+          <textarea class="voice-text" id="meeting-text" placeholder="Gesprächsnotizen diktieren …" rows="4"></textarea>
+          <div class="rec-indicator" id="rec-meeting"><div class="rec-dot"></div> Aufnahme …</div>
+        </div>
+        <div class="voice-controls">
+          <button class="btn-mic" id="mic-meeting" onclick="toggleMic('meeting')">🎤 Diktieren</button>
+        </div>
+      </div>
+      <button class="btn-summarize" id="btn-memo" onclick="createCombinedMemo()" style="margin-top:14px;width:100%">✨ Meeting-Memo erstellen</button>
+      <p class="info-note">Claude kombiniert alle Infos zu einem strukturierten Memo.</p>
+      <div class="memo-box" id="combined-memo">
+        <div class="memo-label">✅ Meeting-Memo</div>
+        <div id="memo-sections"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-label">In Kartei speichern</div>
+      <div class="kartei-selector">
+        <label>Kartei auswählen:</label>
+        <div class="kartei-chips" id="save-kartei-chips"></div>
+      </div>
+      <div class="action-row">
+        <button class="btn" onclick="saveToKartei()">💾 Speichern</button>
+        <button class="btn btn-secondary" onclick="exportVCard()">📥 vCard</button>
+        <button class="btn btn-secondary" onclick="exportFullSingle()">📄 .txt</button>
+      </div>
+      <div class="success-box" id="save-success"></div>
+      <button class="btn btn-secondary" style="width:100%;margin-top:10px" onclick="resetScanner()">🔄 Neue Karte scannen</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── PAGE: KARTEI ── -->
+<div class="page" id="page-kartei" style="max-width:680px">
+  <div class="page-header">
+    <h1>📇 Kartei</h1>
+    <p id="event-display"></p>
+  </div>
+
+  <!-- Kartei tabs -->
+  <div class="kartei-tab-bar" id="kartei-tab-bar"></div>
+
+  <!-- Manage kartei -->
+  <div class="card" id="manage-card" style="display:none">
+    <div class="section-label">Karteien verwalten</div>
+    <div id="manage-list"></div>
+    <div class="kartei-manage" style="margin-top:12px">
+      <input type="text" id="new-kartei-input" placeholder="Neue Kartei (z.B. Marketing)" maxlength="30">
+      <button class="btn" style="padding:10px 16px;flex-shrink:0" onclick="addKartei()">+ Anlegen</button>
+    </div>
+  </div>
+
+  <div class="kartei-stats">
+    <div class="stat-box"><div class="stat-num" id="stat-total">0</div><div class="stat-label">Gesamt</div></div>
+    <div class="stat-box"><div class="stat-num" id="stat-open">0</div><div class="stat-label">Offen</div></div>
+    <div class="stat-box green"><div class="stat-num" id="stat-csv">0</div><div class="stat-label">CSV exportiert</div></div>
+  </div>
+
+  <div id="kartei-list-wrap">
+    <div class="kartei-actions">
+      <button class="btn" onclick="exportAllCSV()">📊 Alle als CSV</button>
+      <button class="btn btn-secondary" onclick="exportNewCSV()">📊 Nur Neue</button>
+    </div>
+    <div class="success-box" id="csv-success" style="margin-bottom:12px"></div>
+    <div class="kartei-empty" id="kartei-empty">
+      <div class="empty-icon">📭</div>
+      <p>Noch keine Karten in dieser Kartei.</p>
+    </div>
+    <div class="kartei-list" id="kartei-list"></div>
+  </div>
+
+  <div id="detail-wrap">
+    <button class="detail-back" onclick="closeDetail()">← Zurück</button>
+    <div id="detail-content"></div>
+  </div>
+</div>
+
+<!-- ── PAGE: ÜBERSETZER ── -->
+<div class="page" id="page-translator" style="max-width:680px">
+  <div class="page-header">
+    <div class="pill">🌐 Echtzeit-Übersetzer</div>
+    <h1>Übersetzer</h1>
+    <p>Sprache wird automatisch erkannt</p>
+  </div>
+
+  <!-- Info -->
+  <div class="card" style="background:#12121a;border-color:#1e2535">
+    <div style="font-size:0.82rem;color:#888;line-height:1.6">
+      🇩🇪 <strong style="color:#ccc">Du</strong> sprichst immer Deutsch — dein Text wird automatisch übersetzt.<br>
+      🌐 <strong style="color:#ccc">Gesprächspartner</strong> spricht seine Sprache — Whisper erkennt sie automatisch und übersetzt ins Deutsche.
+    </div>
+    <button class="btn btn-secondary" style="width:100%;margin-top:12px;font-size:0.82rem" onclick="clearConversation()">🗑️ Gespräch löschen</button>
+  </div>
+
+  <!-- Gesprächsverlauf -->
+  <div class="card" id="conv-card" style="display:none">
+    <div class="section-label">Gesprächsverlauf</div>
+    <div id="conv-history" style="display:flex;flex-direction:column;gap:12px;max-height:400px;overflow-y:auto"></div>
+  </div>
+
+  <!-- Meine Seite — immer Deutsch -->
+  <div class="card">
+    <div class="section-label">🇩🇪 Ich spreche (Deutsch)</div>
+    <div class="voice-box" style="margin-bottom:10px">
+      <textarea class="voice-text" id="my-input" placeholder="Auf Deutsch eingeben oder diktieren …" rows="3"></textarea>
+      <div class="rec-indicator" id="rec-my"><div class="rec-dot"></div> Aufnahme läuft …</div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn-mic" id="mic-my" onclick="transToggleMic('my')">🎤 Diktieren (DE)</button>
+      <button class="btn-summarize" onclick="translate('my')" id="btn-trans-my">▶️ Übersetzen & Vorlesen</button>
+    </div>
+    <div style="font-size:0.72rem;color:#555;margin-top:8px" id="detected-lang-hint"></div>
+  </div>
+
+  <!-- Andere Seite — Sprache wird erkannt -->
+  <div class="card">
+    <div class="section-label">🌐 Gesprächspartner spricht</div>
+    <div style="font-size:0.78rem;color:#d97706;margin-bottom:10px;min-height:20px" id="other-lang-detected">Sprache wird beim Diktieren automatisch erkannt …</div>
+    <div class="voice-box" style="margin-bottom:10px">
+      <textarea class="voice-text" id="other-input" placeholder="Gesprächspartner spricht — Mikrofon drücken, Whisper erkennt die Sprache automatisch …" rows="3"></textarea>
+      <div class="rec-indicator" id="rec-other"><div class="rec-dot"></div> Aufnahme läuft …</div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn-mic" id="mic-other" onclick="transToggleMic('other')">🎤 Diktieren (Auto)</button>
+      <button class="btn-summarize" onclick="translate('other')" id="btn-trans-other">▶️ Übersetzen & Vorlesen</button>
+    </div>
+  </div>
+
+</div>
+
+<nav class="nav" id="main-nav" style="display:none">
+  <button class="nav-btn active" id="nav-scanner" onclick="showPage('scanner')">
+    <span class="nav-icon">📸</span>Scanner
+  </button>
+  <button class="nav-btn" id="nav-kartei" onclick="showPage('kartei')">
+    <span class="nav-icon">📇</span>Kartei
+    <span class="nav-badge" id="nav-badge"></span>
+  </button>
+  <button class="nav-btn" id="nav-translator" onclick="showPage('translator')">
+    <span class="nav-icon">🌐</span>Übersetzer
+  </button>
+</nav>
+
+<script>
+// ── STATE ──
+let anthropicKey = localStorage.getItem('claude_api_key') || '';
+let openaiKey    = localStorage.getItem('openai_api_key') || '';
+let eventName    = localStorage.getItem('event_name') || 'Messe';
+let messeFileContent = localStorage.getItem('messe_file_content') || '';
+let messeFileName    = localStorage.getItem('messe_file_name') || '';
+let currentData  = null;
+let currentLang  = 'de';
+let detectedLang = 'de';
+let activeKartei = null; // current kartei id in kartei page
+let saveKarteiId = null; // selected kartei when saving
+
+// Default karteien
+function defaultKarteien() {
+  return [
+    {id:'salesforce', name:'☁️ Salesforce', color:'#22c55e'},
+    {id:'einkauf',    name:'🛒 Einkauf',    color:'#60a5fa'},
+    {id:'marketing',  name:'📣 Marketing',  color:'#f472b6'},
+    {id:'entwicklung',name:'⚙️ Entwicklung',color:'#a78bfa'},
+  ];
+}
+
+function loadKarteien() {
+  try { return JSON.parse(localStorage.getItem('karteien')) || defaultKarteien(); }
+  catch(e) { return defaultKarteien(); }
+}
+function saveKarteienList(list) { localStorage.setItem('karteien', JSON.stringify(list)); }
+
+// ── INIT ──
+function init() {
+  if(!localStorage.getItem('karteien')) saveKarteienList(defaultKarteien());
+  if(anthropicKey) showPage('scanner');
+  else showPage('setup');
+}
+
+// ── PAGES ──
+function showPage(page) {
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('page-'+page).classList.add('active');
+  const nb=document.getElementById('nav-'+page);
+  if(nb) nb.classList.add('active');
+  if(page==='kartei') { if(!activeKartei) activeKartei=loadKarteien()[0]?.id||null; renderKartei(); }
+  if(page==='scanner' && anthropicKey) startCamera();
+  document.getElementById('main-nav').style.display = anthropicKey?'flex':'none';
+  window.scrollTo(0,0);
+}
+
+function showSetup() {
+  stopCamera();
+  document.getElementById('key-anthropic').value = anthropicKey;
+  document.getElementById('key-openai').value    = openaiKey;
+  document.getElementById('event-name').value    = eventName;
+  document.getElementById('main-nav').style.display='none';
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.getElementById('page-setup').classList.add('active');
+  updateFileStatus();
+}
+
+function updateFileStatus() {
+  const statusEl = document.getElementById('file-status');
+  const clearBtn = document.getElementById('clear-file-btn');
+  if(!statusEl) return;
+  if(messeFileName) {
+    statusEl.innerHTML = `✅ <strong style="color:#22c55e">${messeFileName}</strong> geladen (${Math.round(messeFileContent.length/1000)}KB)`;
+    if(clearBtn) clearBtn.style.display='block';
+  } else {
+    statusEl.textContent='Keine Datei geladen';
+    if(clearBtn) clearBtn.style.display='none';
+  }
+}
+
+async function loadMesseFile(input) {
+  const file = input.files[0];
+  if(!file) return;
+  const statusEl = document.getElementById('file-status');
+  statusEl.textContent='⏳ Datei wird gelesen …';
+
+  try {
+    let text = '';
+    const name = file.name;
+    const ext  = name.split('.').pop().toLowerCase();
+
+    if(ext === 'txt') {
+      text = await file.text();
+    } else if(ext === 'pdf') {
+      // Read PDF as base64 and send to Claude for extraction
+      const arrayBuf = await file.arrayBuffer();
+      const bytes    = new Uint8Array(arrayBuf);
+      let binary = '';
+      bytes.forEach(b => binary += String.fromCharCode(b));
+      const b64 = btoa(binary);
+      // Use Claude to extract text from PDF
+      statusEl.textContent='⏳ PDF wird mit Claude ausgelesen …';
+      const res = await fetch('https://api.anthropic.com/v1/messages',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','x-api-key':anthropicKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+        body:JSON.stringify({
+          model:'claude-sonnet-4-20250514', max_tokens:4000,
+          messages:[{role:'user',content:[
+            {type:'document',source:{type:'base64',media_type:'application/pdf',data:b64}},
+            {type:'text',text:'Extrahiere den vollständigen Text aus diesem Dokument. Gib nur den Text zurück, keine Erklärungen.'}
+          ]}]
+        })
+      });
+      const data = await res.json();
+      if(data.error) throw new Error(data.error.message);
+      text = data.content?.find(b=>b.type==='text')?.text || '';
+    } else if(ext === 'docx' || ext === 'doc') {
+      // Extract text from docx using FileReader
+      statusEl.textContent='⏳ Word-Datei wird ausgelesen …';
+      const arrayBuf = await file.arrayBuffer();
+      const bytes    = new Uint8Array(arrayBuf);
+      let binary = '';
+      bytes.forEach(b => binary += String.fromCharCode(b));
+      const b64 = btoa(binary);
+      const res = await fetch('https://api.anthropic.com/v1/messages',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','x-api-key':anthropicKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+        body:JSON.stringify({
+          model:'claude-sonnet-4-20250514', max_tokens:4000,
+          messages:[{role:'user',content:[
+            {type:'document',source:{type:'base64',media_type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',data:b64}},
+            {type:'text',text:'Extrahiere den vollständigen Text aus diesem Dokument. Gib nur den Text zurück, keine Erklärungen.'}
+          ]}]
+        })
+      });
+      const data = await res.json();
+      if(data.error) throw new Error(data.error.message);
+      text = data.content?.find(b=>b.type==='text')?.text || '';
+    }
+
+    // Truncate to ~8000 chars to stay within token limits
+    const maxChars = 8000;
+    if(text.length > maxChars) {
+      text = text.slice(0, maxChars) + '\n[…Dokument gekürzt]';
+    }
+
+    messeFileContent = text;
+    messeFileName    = name;
+    localStorage.setItem('messe_file_content', text);
+    localStorage.setItem('messe_file_name', name);
+    updateFileStatus();
+    updateBadges();
+  } catch(err) {
+    document.getElementById('file-status').textContent = '❌ Fehler: ' + err.message;
+  }
+  input.value = ''; // reset so same file can be reloaded
+}
+
+function clearMesseFile() {
+  messeFileContent=''; messeFileName='';
+  localStorage.removeItem('messe_file_content');
+  localStorage.removeItem('messe_file_name');
+  updateFileStatus();
+  updateBadges();
+}
+
+function saveKeys() {
+  const ak=document.getElementById('key-anthropic').value.trim();
+  const ok=document.getElementById('key-openai').value.trim();
+  const en=document.getElementById('event-name').value.trim()||'Messe';
+  if(!ak.startsWith('sk-ant-')){ showErr('key-error','Anthropic Key muss mit sk-ant- beginnen.'); return; }
+  anthropicKey=ak; localStorage.setItem('claude_api_key',ak);
+  if(ok){ openaiKey=ok; localStorage.setItem('openai_api_key',ok); }
+  eventName=en; localStorage.setItem('event_name',en);
+  updateBadges(); showPage('scanner');
+}
+
+function updateBadges() {
+  document.getElementById('badge-whisper').className   = openaiKey?'badge ok':'badge off';
+  document.getElementById('badge-whisper').textContent = openaiKey?'Whisper ✓':'Whisper —';
+  const ed=document.getElementById('event-display');
+  if(ed) ed.textContent=eventName;
+  // Update file badge if exists
+  const fb=document.getElementById('badge-file');
+  if(fb){
+    fb.className   = messeFileName?'badge ok':'badge off';
+    fb.textContent = messeFileName?'📄 Datei ✓':'📄 Datei —';
+  }
+  updateFileStatus();
+}
+
+// ── KARTEIEN MANAGEMENT ──
+function addKartei() {
+  const input=document.getElementById('new-kartei-input');
+  const name=input.value.trim();
+  if(!name) return;
+  const list=loadKarteien();
+  const id='k_'+Date.now();
+  const colors=['#d97706','#60a5fa','#f472b6','#a78bfa','#22c55e','#fb923c'];
+  const color=colors[list.length%colors.length];
+  list.push({id, name, color});
+  saveKarteienList(list);
+  input.value='';
+  renderKarteiTabs();
+  renderManageList();
+  renderSaveChips();
+}
+
+function deleteKartei(id) {
+  const list=loadKarteien();
+  if(list.length<=1){ alert('Mindestens eine Kartei muss vorhanden sein.'); return; }
+  if(!confirm('Kartei löschen? Karten darin bleiben erhalten (ohne Kartei-Zuordnung).')){ return; }
+  const newList=list.filter(k=>k.id!==id);
+  saveKarteienList(newList);
+  // Remove kartei ref from cards
+  const cards=loadAllCards().map(c=>c._kartei===id?{...c,_kartei:newList[0].id}:c);
+  saveAllCards(cards);
+  if(activeKartei===id) activeKartei=newList[0].id;
+  renderKartei();
+}
+
+function renameKartei(id) {
+  const list=loadKarteien();
+  const k=list.find(k=>k.id===id);
+  const newName=prompt('Neuer Name:', k?.name||'');
+  if(!newName||!newName.trim()) return;
+  k.name=newName.trim();
+  saveKarteienList(list);
+  renderKartei();
+}
+
+function renderKarteiTabs() {
+  const list=loadKarteien();
+  const bar=document.getElementById('kartei-tab-bar');
+  bar.innerHTML=list.map(k=>`
+    <button class="kartei-tab ${k.id===activeKartei?'active':''}" onclick="switchKartei('${k.id}')">${k.name}</button>
+  `).join('')+`<button class="kartei-tab add-tab" onclick="toggleManageCard()" title="Karteien verwalten">⚙️</button>`;
+}
+
+function renderManageList() {
+  const list=loadKarteien();
+  document.getElementById('manage-list').innerHTML=list.map(k=>`
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+      <span style="flex:1;font-size:0.88rem;color:#ccc">${k.name}</span>
+      <button class="btn btn-secondary" style="padding:6px 10px;font-size:0.75rem" onclick="renameKartei('${k.id}')">✏️</button>
+      <button class="btn btn-secondary btn-danger" style="padding:6px 10px;font-size:0.75rem" onclick="deleteKartei('${k.id}')">🗑️</button>
+    </div>`).join('');
+}
+
+function toggleManageCard() {
+  const card=document.getElementById('manage-card');
+  const show=card.style.display==='none';
+  card.style.display=show?'block':'none';
+  if(show) renderManageList();
+}
+
+function switchKartei(id) {
+  activeKartei=id;
+  document.getElementById('manage-card').style.display='none';
+  renderKartei();
+}
+
+function renderSaveChips() {
+  const list=loadKarteien();
+  if(!saveKarteiId) saveKarteiId=list[0]?.id||null;
+  document.getElementById('save-kartei-chips').innerHTML=list.map(k=>`
+    <div class="kartei-chip ${k.id===saveKarteiId?'active':''}" onclick="selectSaveKartei('${k.id}')">${k.name}</div>
+  `).join('');
+}
+
+function selectSaveKartei(id) {
+  saveKarteiId=id;
+  document.querySelectorAll('#save-kartei-chips .kartei-chip').forEach(c=>c.classList.remove('active'));
+  event.target.classList.add('active');
+}
+
+// ── ALL CARDS STORAGE ──
+function loadAllCards() { try{ return JSON.parse(localStorage.getItem('kartei_cards')||'[]'); }catch(e){ return []; } }
+function saveAllCards(list) { localStorage.setItem('kartei_cards',JSON.stringify(list)); updateNavBadge(); }
+
+function updateNavBadge() {
+  const open=loadAllCards().filter(i=>i._status==='open').length;
+  const badge=document.getElementById('nav-badge');
+  badge.textContent=open; badge.style.display=open>0?'block':'none';
+}
+
+// ── LANGUAGE ──
+function setLang(lang) {
+  currentLang=lang;
+  document.getElementById('lang-de').classList.toggle('active',lang==='de');
+  document.getElementById('lang-en').classList.toggle('active',lang==='en');
+  rerenderAnalysis();
+}
+
+function rerenderAnalysis() {
+  if(!currentData) return;
+  const isEn=currentLang==='en';
+  const src=isEn?(currentData.en||currentData):currentData;
+  const cp=src.company_profile||{};
+  const pp=src.person_profile||{};
+
+  document.getElementById('lbl-company').innerHTML = isEn?'Company Profile <span class="en-badge">EN</span>':'Firmenprofil';
+  document.getElementById('lbl-person').innerHTML  = isEn?'About the Person <span class="en-badge">EN</span>':'Zur Person';
+  document.getElementById('lbl-tips').innerHTML    = isEn?'Conversation Tips <span class="en-badge">EN</span>':'Gesprächsvorbereitung';
+
+  document.getElementById('company-grid').innerHTML=[
+    [isEn?'Industry':'Branche',       cp.industry],
+    [isEn?'Size':'Größe',             cp.size],
+    [isEn?'HQ':'Hauptsitz',           cp.hq],
+    [isEn?'Founded':'Gründungsjahr',  cp.founded],
+    [isEn?'Products':'Kernprodukte',  cp.products],
+    [isEn?'Positioning':'Positionierung', cp.positioning]
+  ].map(([k,v])=>`<div class="info-item"><div class="key">${k}</div><div class="value">${v||'–'}</div></div>`).join('');
+
+  document.getElementById('person-grid').innerHTML=[
+    [isEn?'Role Scope':'Aufgabenbereich', pp.role_scope],
+    [isEn?'Seniority':'Seniorität',       pp.seniority],
+    [isEn?'Expertise':'Fachgebiete',      pp.expertise],
+    [isEn?'LinkedIn':'LinkedIn-Suche',    pp.linkedin_hint]
+  ].map(([k,v])=>`<div class="info-item"><div class="key">${k}</div><div class="value">${v||'–'}</div></div>`).join('');
+
+  document.getElementById('tips-list').innerHTML=(src.conversation_tips||[]).map(t=>`<li>${t}</li>`).join('');
+}
+
+// ── CAMERA ──
+let stream=null, facingMode='environment';
+let autoEnabled=true, detectInterval=null, countdownTimer=null;
+let isAnalyzing=false, cardDetected=false, stableFrames=0, countdownActive=false;
+const STABLE=8;
+
+const video=document.getElementById('video');
+const canvas=document.getElementById('snap-canvas');
+const ctx=canvas.getContext('2d');
+const guideFrame=document.getElementById('guide-frame');
+const camStatus=document.getElementById('cam-status');
+const cdWrap=document.getElementById('countdown-wrap');
+const cdRing=document.getElementById('countdown-ring');
+const cdNum=document.getElementById('countdown-num');
+const flash=document.getElementById('flash');
+const loaderEl=document.getElementById('loader');
+const loaderMsg=document.getElementById('loader-msg');
+
+async function startCamera() {
+  try {
+    if(stream) stream.getTracks().forEach(t=>t.stop());
+    stream=await navigator.mediaDevices.getUserMedia({video:{facingMode,width:{ideal:1280},height:{ideal:960}},audio:false});
+    video.srcObject=stream; video.play();
+    camStatus.textContent='Karte in den Rahmen halten …';
+    startDetectionLoop();
+  } catch(e) {
+    document.getElementById('cam-wrap').style.display='none';
+    document.getElementById('no-cam-msg').style.display='block';
+    document.querySelector('.cam-controls').style.display='none';
+  }
+}
+function stopCamera() { if(stream) stream.getTracks().forEach(t=>t.stop()); clearInterval(detectInterval); }
+function flipCamera() { facingMode=facingMode==='environment'?'user':'environment'; startCamera(); }
+
+function detectCardInFrame() {
+  if(!video.videoWidth) return false;
+  canvas.width=160; canvas.height=120;
+  ctx.drawImage(video,0,0,160,120);
+  const data=ctx.getImageData(16,12,128,96).data;
+  let sum=0,sumSq=0; const px=128*96;
+  for(let i=0;i<data.length;i+=4){ const l=0.299*data[i]+0.587*data[i+1]+0.114*data[i+2]; sum+=l; sumSq+=l*l; }
+  const mean=sum/px, variance=sumSq/px-mean*mean;
+  return mean>60&&mean<230&&variance>300;
+}
+
+function startDetectionLoop() {
+  if(detectInterval) clearInterval(detectInterval);
+  detectInterval=setInterval(()=>{
+    if(!autoEnabled||isAnalyzing) return;
+    const det=detectCardInFrame();
+    if(det){ stableFrames++;
+      if(!cardDetected){ cardDetected=true; guideFrame.classList.add('detected'); camStatus.textContent='Karte erkannt …'; camStatus.className='cam-status detected'; }
+      if(stableFrames>=STABLE&&!countdownActive) startCountdown();
+    } else { stableFrames=0;
+      if(cardDetected){ cardDetected=false; guideFrame.classList.remove('detected'); camStatus.textContent='Karte in den Rahmen halten …'; camStatus.className='cam-status'; cancelCountdown(); }
+    }
+  },120);
+}
+function startCountdown() {
+  countdownActive=true; cdWrap.style.display='block';
+  camStatus.textContent='Scan in 3 …'; camStatus.className='cam-status counting';
+  let count=3; cdNum.textContent=count; cdRing.style.strokeDashoffset='0';
+  countdownTimer=setInterval(()=>{ count--; cdNum.textContent=count; cdRing.style.strokeDashoffset=String((3-count)/3*126);
+    if(count<=0){ clearInterval(countdownTimer); captureAndAnalyze(); } else camStatus.textContent=`Scan in ${count} …`; },1000);
+}
+function cancelCountdown() { countdownActive=false; clearInterval(countdownTimer); cdWrap.style.display='none'; cdRing.style.strokeDashoffset='126'; }
+function captureManual() { if(isAnalyzing) return; cancelCountdown(); captureAndAnalyze(); }
+function captureAndAnalyze() {
+  if(!video.videoWidth||isAnalyzing) return;
+  isAnalyzing=true;
+  flash.classList.add('active'); setTimeout(()=>flash.classList.remove('active'),120);
+  canvas.width=video.videoWidth; canvas.height=video.videoHeight;
+  ctx.drawImage(video,0,0);
+  const b64=canvas.toDataURL('image/jpeg',0.9).split(',')[1];
+  clearInterval(detectInterval); showLoader(); analyzeCard(b64);
+}
+
+// ── LOADER ──
+const lMsgs=['Claude liest die Visitenkarte …','Firmendaten werden recherchiert …','Gesprächstipps DE+EN werden generiert …','Briefing wird zusammengestellt …'];
+let loaderInt;
+function showLoader(){ document.getElementById('scanner-card').style.display='none'; loaderEl.style.display='block'; let i=0; loaderMsg.textContent=lMsgs[0]; loaderInt=setInterval(()=>{i=(i+1)%lMsgs.length; loaderMsg.textContent=lMsgs[i];},2200); }
+function hideLoader(){ clearInterval(loaderInt); loaderEl.style.display='none'; }
+
+// ── CLAUDE ──
+async function callClaude(messages, maxTokens=1800) {
+  const res=await fetch('https://api.anthropic.com/v1/messages',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','x-api-key':anthropicKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+    body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:maxTokens,messages})
+  });
+  const data=await res.json();
+  if(data.error) throw new Error(data.error.message);
+  return data.content?.find(b=>b.type==='text')?.text||'';
+}
+
+async function analyzeCard(b64) {
+
+  // Build Lenord+Bauer product context
+  const lbContext = `
+LENORD+BAUER PRODUKTPORTFOLIO (www.lenord.de):
+Lenord+Bauer ist ein führender Hersteller von Drehgebern, Positionsmesssystemen und Antriebsregelsystemen für die Industrie.
+
+Kernprodukte:
+- GEL-Drehgeber (inkremental & absolut): für Maschinenbau, Aufzüge, Windenergie, Bahntechnik
+- Magnetische Drehgeber: robust, wartungsfrei, für raue Umgebungen
+- GEL 9000 Antriebsregler: kompakte Servoantriebe für Automatisierung
+- SafePos Sicherheitssysteme: SIL2/SIL3-zertifiziert für funktionale Sicherheit
+- GEL 8000 / GEL 8800: Positionsmesssysteme für Linearbewegungen
+- Interfaces & Auswerteelektronik: SSI, BiSS-C, CANopen, PROFIBUS, EtherCAT
+
+Zielbranchen:
+- Maschinenbau & Sondermaschinen
+- Windenergie & erneuerbare Energien  
+- Aufzüge & Fördertechnik
+- Bahntechnik & Schienenfahrzeuge
+- Robotik & Handhabungstechnik
+- Druckmaschinen & Verpackungstechnik
+- Medizintechnik
+- Stahl- & Hüttenindustrie
+
+USP: Hohe Robustheit, Temperaturbereich -40°C bis +100°C, IP69K, kundenspezifische Anpassungen, deutsches Engineering.
+`;
+
+  const messeContext = messeFileContent
+    ? `\nMESSE-NEUHEITEN & ANKÜNDIGUNGEN (${messeFileName}):\n${messeFileContent}\n`
+    : '';
+
+  const prompt=`You are a professional business intelligence assistant for Lenord+Bauer GmbH & Co. KG, a German manufacturer of encoders and drive systems. Analyze this business card carefully.
+
+${lbContext}
+${messeContext}
+
+Return ONLY valid JSON (no markdown, no backticks, no explanation):
+{
+  "detected_language": "de or en",
+  "contact": {
+    "name":"", "title":"", "company":"", "email":"", "phone":"", "mobile":"", "website":"", "address":""
+  },
+  "company_profile": {
+    "industry":"", "size":"", "products":"", "hq":"", "founded":"", "positioning":""
+  },
+  "person_profile": {
+    "role_scope":"", "seniority":"", "linkedin_hint":"", "expertise":""
+  },
+  "conversation_tips": ["","","","","",""],
+  "en": {
+    "company_profile": {
+      "industry":"", "size":"", "products":"", "hq":"", "founded":"", "positioning":""
+    },
+    "person_profile": {
+      "role_scope":"", "seniority":"", "linkedin_hint":"", "expertise":""
+    },
+    "conversation_tips": ["","","","","",""]
+  }
+}
+
+IMPORTANT RULES:
+- contact: always use exact text from card (original language)
+- company_profile, person_profile, conversation_tips: write in GERMAN
+- en.company_profile, en.person_profile, en.conversation_tips: write in ENGLISH
+- detected_language: set to "en" ONLY if card text is in English OR country is US/UK/AU/CA/NZ/SG/IE/ZA; otherwise "de"
+- Use your knowledge about the contact's company if known. Be specific and helpful.
+- All fields must be filled — use "-" if unknown.
+
+CONVERSATION TIPS RULES (very important — 6 tips total):
+- Tips 1-2: General conversation starters based on the person's role and company
+- Tips 3-4: SPECIFIC Lenord+Bauer product recommendations that match this customer's industry and needs. Reference exact product names (e.g. GEL 2444, GEL 9000, SafePos). Explain WHY this product fits their application.
+- Tip 5: If messe file content is available, mention a specific trade show novelty or announcement that is relevant to this customer.
+- Tip 6: A specific follow-up action or question to deepen the business relationship.
+- Make tips concrete, specific and actionable — not generic.
+
+COMPANY NAME RULES (very important):
+- If company name is visible on the card: use it exactly as printed.
+- If NO company name is on the card BUT an email address is present: extract the domain after "@" and use your knowledge to resolve it to the full official company name.
+- If the domain is a free/personal email provider (gmail.com, yahoo.com, hotmail.com, gmx.de, web.de, outlook.com, icloud.com, t-online.de, freenet.de, arcor.de, aol.com, proton.me): set contact.company to "Privat".
+- Never leave contact.company empty — always fill it with the company name or "Privat".`;`;
+
+  try {
+    const text=await callClaude([{role:'user',content:[
+      {type:'image',source:{type:'base64',media_type:'image/jpeg',data:b64}},
+      {type:'text',text:prompt}
+    ]}], 2200);
+
+    let data;
+    try { data=JSON.parse(text.replace(/```json|```/g,'').trim()); }
+    catch(e) {
+      // Try to extract JSON from response
+      const match=text.match(/\{[\s\S]*\}/);
+      if(match) data=JSON.parse(match[0]);
+      else throw new Error('Kein gültiges JSON in der Antwort');
+    }
+
+    detectedLang=data.detected_language||'de';
+    currentLang=detectedLang;
+
+    currentData={
+      ...data,
+      _notes:'', _meeting:'', _memo:'', _memoHtml:'',
+      _date:new Date().toISOString(),
+      _status:'open',
+      _id:Date.now(),
+      _lang:detectedLang,
+      _kartei:saveKarteiId||loadKarteien()[0]?.id
+    };
+
+    hideLoader();
+    renderResults(currentData);
+    renderSaveChips();
+  } catch(err) {
+    hideLoader();
+    document.getElementById('scanner-card').style.display='block';
+    isAnalyzing=false; startCamera();
+    showErr('scan-error','Fehler: '+err.message);
+  }
+}
+
+// ── RENDER ──
+function renderResults(d) {
+  const c=d.contact||{};
+  document.getElementById('contact-strip').innerHTML=[
+    ['Name',c.name,'name'],['Titel',c.title],['Firma',c.company],
+    ['E-Mail',c.email],['Telefon',c.phone],['Mobil',c.mobile],
+    ['Webseite',c.website],['Adresse',c.address]
+  ].filter(([,v])=>v&&v!=='-')
+   .map(([l,v,cls])=>`<div class="contact-row"><span class="lbl">${l}</span><span class="val ${cls||''}">${v}</span></div>`).join('');
+
+  const hint=document.getElementById('lang-detected-hint');
+  if(detectedLang==='en') {
+    hint.textContent='🇬🇧 Englisch erkannt — EN aktiv';
+    currentLang='en';
+  } else {
+    hint.textContent='🇩🇪 Deutsch erkannt';
+    currentLang='de';
+  }
+  document.getElementById('lang-de').classList.toggle('active',currentLang==='de');
+  document.getElementById('lang-en').classList.toggle('active',currentLang==='en');
+
+  document.getElementById('notes-text').value   = d._notes   || '';
+  document.getElementById('meeting-text').value = d._meeting || '';
+  document.getElementById('combined-memo').style.display = d._memoHtml?'block':'none';
+  if(d._memoHtml) document.getElementById('memo-sections').innerHTML=d._memoHtml;
+  document.getElementById('save-success').style.display='none';
+  document.getElementById('result-wrap').style.display='block';
+  document.getElementById('result-wrap').scrollIntoView({behavior:'smooth'});
+  updateBadges();
+  rerenderAnalysis();
+}
+
+// ── VOICE ──
+let mediaRecorder=null, audioChunks=[], isRecording=false, activeRecWhich=null;
+
+async function toggleMic(which) {
+  if(isRecording&&activeRecWhich===which){ mediaRecorder.stop(); return; }
+  if(isRecording){ mediaRecorder.stop(); await new Promise(r=>setTimeout(r,300)); }
+  if(openaiKey) await startWhisperRecording(which);
+  else startBrowserSpeech(which);
+}
+async function startWhisperRecording(which) {
+  try {
+    const micStream=await navigator.mediaDevices.getUserMedia({audio:true});
+    audioChunks=[];
+    const mime=getSupportedMimeType();
+    mediaRecorder=new MediaRecorder(micStream,{mimeType:mime});
+    const btn=document.getElementById('mic-'+which);
+    const rec=document.getElementById('rec-'+which);
+    btn.textContent='⏹️ Stopp'; btn.classList.add('recording');
+    rec.style.display='flex'; isRecording=true; activeRecWhich=which;
+    mediaRecorder.ondataavailable=e=>{ if(e.data.size>0) audioChunks.push(e.data); };
+    mediaRecorder.onstop=async()=>{
+      btn.textContent='⏳ …'; btn.disabled=true; rec.style.display='none'; isRecording=false;
+      const blob=new Blob(audioChunks,{type:mime}); micStream.getTracks().forEach(t=>t.stop());
+      try {
+        const transcript=await transcribeWithWhisper(blob,mime);
+        const ta=document.getElementById(which==='notes'?'notes-text':'meeting-text');
+        ta.value=(ta.value?ta.value+' ':'')+transcript;
+        if(currentData) currentData[which==='notes'?'_notes':'_meeting']=ta.value;
+      } catch(err){ alert('Whisper: '+err.message); }
+      finally{ btn.textContent='🎤 Diktieren'; btn.disabled=false; btn.classList.remove('recording'); }
+    };
+    mediaRecorder.start();
+  } catch(e){ alert('Mikrofon: '+e.message); }
+}
+function getSupportedMimeType() {
+  for(const t of ['audio/webm;codecs=opus','audio/webm','audio/mp4','audio/ogg']){ if(MediaRecorder.isTypeSupported(t)) return t; }
+  return 'audio/webm';
+}
+async function transcribeWithWhisper(blob,mime) {
+  const ext=mime.includes('mp4')?'m4a':mime.includes('ogg')?'ogg':'webm';
+  const fd=new FormData(); fd.append('file',blob,`rec.${ext}`); fd.append('model','whisper-1'); fd.append('language','de');
+  const res=await fetch('https://api.openai.com/v1/audio/transcriptions',{method:'POST',headers:{'Authorization':'Bearer '+openaiKey},body:fd});
+  const d=await res.json(); if(d.error) throw new Error(d.error.message); return d.text||'';
+}
+let browserRecognition=null;
+function startBrowserSpeech(which) {
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){ alert('Bitte OpenAI Key in Einstellungen eintragen für Whisper.'); return; }
+  if(browserRecognition) browserRecognition.stop();
+  browserRecognition=new SR(); browserRecognition.lang='de-DE'; browserRecognition.continuous=true; browserRecognition.interimResults=true;
+  const ta=document.getElementById(which==='notes'?'notes-text':'meeting-text');
+  const btn=document.getElementById('mic-'+which);
+  let base=ta.value;
+  btn.textContent='⏹️ Stopp'; btn.classList.add('recording'); isRecording=true; activeRecWhich=which;
+  browserRecognition.onresult=e=>{
+    let interim='',final='';
+    for(let i=e.resultIndex;i<e.results.length;i++){ if(e.results[i].isFinal) final+=e.results[i][0].transcript+' '; else interim+=e.results[i][0].transcript; }
+    if(final) base+=final; ta.value=base+interim;
+    if(currentData) currentData[which==='notes'?'_notes':'_meeting']=ta.value;
+  };
+  browserRecognition.onend=()=>{ btn.textContent='🎤 Diktieren'; btn.classList.remove('recording'); isRecording=false; activeRecWhich=null; };
+  browserRecognition.onerror=()=>{ btn.textContent='🎤 Diktieren'; btn.classList.remove('recording'); isRecording=false; activeRecWhich=null; };
+  mediaRecorder={stop:()=>browserRecognition.stop()};
+  browserRecognition.start();
+}
+
+// ── MEMO ──
+async function createCombinedMemo() {
+  const notes  =document.getElementById('notes-text').value.trim();
+  const meeting=document.getElementById('meeting-text').value.trim();
+  if(!notes&&!meeting){ alert('Bitte zuerst Notizen eingeben.'); return; }
+  const btn=document.getElementById('btn-memo');
+  btn.disabled=true; btn.textContent='⏳ Wird erstellt …';
+  const c=currentData?.contact, cp=currentData?.company_profile, pp=currentData?.person_profile;
+  const ctx2=`Kontakt: ${c?.name||''} | ${c?.title||''} | ${c?.company||''}\nBranche: ${cp?.industry||''}\nRolle: ${pp?.role_scope||''}${notes?'\nNotizen: '+notes:''}${meeting?'\nGesprächsnotizen: '+meeting:''}`;
+  const prompt=`Erstelle ein Meeting-Memo auf Deutsch. Gib AUSSCHLIESSLICH JSON zurück:\n{"kontakt_zusammenfassung":"","besprochene_themen":"","naechste_schritte":"","followup_aktionen":""}\n\n${ctx2}`;
+  try {
+    const text=await callClaude([{role:'user',content:prompt}],800);
+    const data=JSON.parse(text.replace(/```json|```/g,'').trim());
+    const html=[['👤 Kontakt & Unternehmen',data.kontakt_zusammenfassung],['💬 Besprochene Themen',data.besprochene_themen],['✅ Nächste Schritte',data.naechste_schritte],['📌 Follow-up',data.followup_aktionen]]
+      .filter(([,v])=>v).map(([t,v])=>`<div class="memo-section"><div class="memo-section-title">${t}</div><div class="memo-section-text">${v}</div></div>`).join('');
+    document.getElementById('memo-sections').innerHTML=html;
+    document.getElementById('combined-memo').style.display='block';
+    document.getElementById('combined-memo').scrollIntoView({behavior:'smooth'});
+    if(currentData){ currentData._memoHtml=html; currentData._notes=notes; currentData._meeting=meeting;
+      currentData._memo=document.getElementById('memo-sections').innerText; }
+  } catch(err){ alert('Fehler: '+err.message); }
+  finally{ btn.disabled=false; btn.textContent='✨ Meeting-Memo erstellen'; }
+}
+
+// ── SAVE TO KARTEI ──
+function saveToKartei() {
+  if(!currentData) return;
+  currentData._notes   =document.getElementById('notes-text').value;
+  currentData._meeting =document.getElementById('meeting-text').value;
+  currentData._memoHtml=document.getElementById('memo-sections').innerHTML;
+  currentData._memo    =document.getElementById('memo-sections').innerText;
+  currentData._kartei  =saveKarteiId||loadKarteien()[0]?.id;
+  const list=loadAllCards();
+  const idx=list.findIndex(i=>i._id===currentData._id);
+  if(idx>=0) list[idx]=currentData; else list.unshift(currentData);
+  saveAllCards(list);
+  const karteiName=loadKarteien().find(k=>k.id===currentData._kartei)?.name||'Kartei';
+  const box=document.getElementById('save-success');
+  box.textContent=`✅ In ${karteiName} gespeichert!`;
+  box.style.display='block';
+  setTimeout(()=>box.style.display='none',2500);
+}
+
+// ── KARTEI RENDER ──
+function renderKartei() {
+  renderKarteiTabs();
+  const all=loadAllCards();
+  const list=all.filter(i=>i._kartei===activeKartei);
+  document.getElementById('stat-total').textContent=list.length;
+  document.getElementById('stat-open').textContent=list.filter(i=>i._status==='open').length;
+  document.getElementById('stat-csv').textContent=list.filter(i=>i._status==='exported').length;
+  document.getElementById('event-display').textContent=eventName;
+  document.getElementById('detail-wrap').style.display='none';
+  document.getElementById('kartei-list-wrap').style.display='block';
+  document.getElementById('csv-success').style.display='none';
+
+  if(!list.length){ document.getElementById('kartei-empty').style.display='block'; document.getElementById('kartei-list').innerHTML=''; return; }
+  document.getElementById('kartei-empty').style.display='none';
+
+  document.getElementById('kartei-list').innerHTML=list.map(item=>{
+    const c=item.contact||{};
+    const date=item._date?new Date(item._date).toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'2-digit'}):'';
+    const notes=(item._notes||item._meeting||'').slice(0,80);
+    const langFlag=item._lang==='en'?'🇬🇧 ':'';
+    const statusClass=item._status==='exported'?'exported':'open';
+    const statusLabel=item._status==='exported'?'CSV exportiert':'Offen';
+    return `<div class="kartei-item ${item._status==='exported'?'exported':''}" onclick="openDetail(${item._id})">
+      <div class="kartei-item-header">
+        <div><div class="kartei-item-name">${langFlag}${c.name||'Unbekannt'}</div><div class="kartei-item-company">${c.company||''} ${c.title?'· '+c.title:''}</div></div>
+        <div class="kartei-item-meta"><span class="kartei-item-date">${date}</span><span class="kartei-status ${statusClass}">${statusLabel}</span></div>
+      </div>
+      ${notes?`<div class="kartei-item-notes">📝 ${notes}${notes.length>=80?'…':''}</div>`:''}
+    </div>`;
+  }).join('');
+}
+
+function openDetail(id) {
+  const item=loadAllCards().find(i=>i._id===id);
+  if(!item) return;
+  document.getElementById('kartei-list-wrap').style.display='none';
+  document.getElementById('detail-wrap').style.display='block';
+
+  const c=item.contact||{}, cp=item.company_profile||{}, pp=item.person_profile||{};
+  const enCp=item.en?.company_profile||{}, enPp=item.en?.person_profile||{};
+  const tips=item.conversation_tips||[];
+  const enTips=item.en?.conversation_tips||[];
+  const isEn=item._lang==='en';
+  const date=item._date?new Date(item._date).toLocaleString('de-DE'):'';
+
+  const karteien=loadKarteien();
+  const karteiOptions=karteien.map(k=>`<option value="${k.id}" ${k.id===item._kartei?'selected':''}>${k.name}</option>`).join('');
+
+  document.getElementById('detail-content').innerHTML=`
+    <div style="font-size:0.75rem;color:#555;margin-bottom:12px">📅 ${date}${isEn?' · 🇬🇧 Englischsprachig':''}</div>
+
+    <div class="card">
+      <div class="section-label">Kontaktdaten</div>
+      ${[['Name',c.name],['Titel',c.title],['Firma',c.company],['E-Mail',c.email],['Telefon',c.phone],['Mobil',c.mobile],['Webseite',c.website]].filter(([,v])=>v&&v!=='-').map(([l,v])=>`<div class="contact-row"><span class="lbl">${l}</span><span class="val">${v}</span></div>`).join('')}
+    </div>
+
+    <div class="card">
+      <div class="section-label">Firmenprofil 🇩🇪</div>
+      <div class="info-grid">${[['Branche',cp.industry],['Größe',cp.size],['Hauptsitz',cp.hq],['Kernprodukte',cp.products],['Positionierung',cp.positioning]].map(([k,v])=>`<div class="info-item"><div class="key">${k}</div><div class="value">${v||'–'}</div></div>`).join('')}</div>
+    </div>
+
+    ${isEn?`<div class="card">
+      <div class="section-label">Company Profile <span class="en-badge">EN</span></div>
+      <div class="info-grid">${[['Industry',enCp.industry],['Size',enCp.size],['HQ',enCp.hq],['Products',enCp.products],['Positioning',enCp.positioning]].map(([k,v])=>`<div class="info-item"><div class="key">${k}</div><div class="value">${v||'–'}</div></div>`).join('')}</div>
+    </div>`:''}
+
+    <div class="card">
+      <div class="section-label">Gesprächstipps 🇩🇪</div>
+      <ul class="tips-list">${tips.map(t=>`<li>${t}</li>`).join('')}</ul>
+    </div>
+
+    ${isEn&&enTips.length?`<div class="card">
+      <div class="section-label">Conversation Tips <span class="en-badge">EN</span></div>
+      <ul class="tips-list">${enTips.map(t=>`<li>${t}</li>`).join('')}</ul>
+    </div>`:''}
+
+    ${item._notes||item._meeting?`<div class="card">
+      <div class="section-label">Notizen</div>
+      ${item._notes?`<p style="font-size:0.88rem;color:#ccc;margin-bottom:10px;white-space:pre-wrap">${item._notes}</p>`:''}
+      ${item._meeting?`<p style="font-size:0.88rem;color:#aaa;white-space:pre-wrap">${item._meeting}</p>`:''}
+    </div>`:''}
+
+    ${item._memoHtml?`<div class="card"><div class="section-label">Meeting-Memo</div>${item._memoHtml}</div>`:''}
+
+    <div class="card">
+      <div class="section-label">In andere Kartei verschieben</div>
+      <select class="move-select" id="move-select-${id}">${karteiOptions}</select>
+      <button class="btn btn-secondary" style="width:100%" onclick="moveToKartei(${id})">↗️ Verschieben</button>
+      <div class="success-box" id="move-ok-${id}"></div>
+    </div>
+
+    <div class="card">
+      <div class="section-label">Aktionen</div>
+      <div class="action-row">
+        <button class="btn btn-secondary" onclick="exportVCardFromItem(${id})">📥 vCard</button>
+        <button class="btn btn-secondary" onclick="exportSingleCSV(${id})">📊 CSV</button>
+        <button class="btn btn-secondary btn-danger" onclick="deleteItem(${id})">🗑️ Löschen</button>
+      </div>
+    </div>`;
+
+  document.getElementById('detail-wrap').scrollIntoView({behavior:'smooth'});
+}
+
+function moveToKartei(id) {
+  const newKarteiId=document.getElementById('move-select-'+id).value;
+  const list=loadAllCards();
+  const idx=list.findIndex(i=>i._id===id);
+  if(idx>=0){ list[idx]._kartei=newKarteiId; saveAllCards(list); }
+  const karteiName=loadKarteien().find(k=>k.id===newKarteiId)?.name||'Kartei';
+  const ok=document.getElementById('move-ok-'+id);
+  ok.textContent=`✅ Verschoben nach ${karteiName}`; ok.style.display='block';
+  setTimeout(()=>{ ok.style.display='none'; closeDetail(); },1500);
+}
+
+function closeDetail() {
+  document.getElementById('detail-wrap').style.display='none';
+  document.getElementById('kartei-list-wrap').style.display='block';
+  renderKartei();
+}
+
+function deleteItem(id) {
+  if(!confirm('Eintrag wirklich löschen?')) return;
+  saveAllCards(loadAllCards().filter(i=>i._id!==id));
+  closeDetail();
+}
+
+// ── CSV ──
+function buildCSVRows(list) {
+  // Salesforce Lead Import Standard-Header
+  const headers=[
+    'First Name','Last Name','Title','Company',
+    'Email','Phone','Mobile Phone',
+    'Lead Source','Industry','Description','Website'
+  ];
+  const rows=list.map(item=>{
+    const c=item.contact||{}, cp=item.company_profile||{};
+    const parts=(c.name||'').trim().split(' ');
+    const last=parts.pop()||'Unbekannt', first=parts.join(' ');
+    // Company Pflichtfeld — Fallback "Privat"
+    const company=(c.company||'').trim()||'Privat';
+    // Alles in Description zusammenfassen
+    const desc=[
+      cp.products    ?'Produkte: '+cp.products        :'',
+      cp.positioning ?'Positionierung: '+cp.positioning:'',
+      cp.size        ?'Groesse: '+cp.size              :'',
+      item._lang==='en'?'Sprache: Englisch'            :'',
+      item._notes    ?'Notizen: '+item._notes          :'',
+      item._meeting  ?'Gespraechsnotizen: '+item._meeting:'',
+      item._memo     ?'Memo: '+item._memo              :'',
+    ].filter(Boolean).join(' | ');
+    return [
+      first, last, c.title||'', company,
+      c.email||'', c.phone||'', c.mobile||'',
+      eventName, cp.industry||'', desc, c.website||''
+    ].map(v=>'"'+String(v||'').replace(/"/g,'""')+'"').join(',');
+  });
+  return '\uFEFF'+headers.map(h=>'"'+h+'"').join(',')+'\n'+rows.join('\n');
+}
+
+function exportAllCSV() {
+  const list=loadAllCards().filter(i=>i._kartei===activeKartei);
+  if(!list.length){ alert('Keine Karten in dieser Kartei.'); return; }
+  const karteiName=loadKarteien().find(k=>k.id===activeKartei)?.name||'Kartei';
+  dlText(buildCSVRows(list),`${eventName.replace(/\s+/g,'_')}_${karteiName.replace(/[^\w]/g,'_')}_alle.csv`);
+  markExported(list.map(i=>i._id));
+}
+
+function exportNewCSV() {
+  const list=loadAllCards().filter(i=>i._kartei===activeKartei&&i._status==='open');
+  if(!list.length){ alert('Keine neuen Karten in dieser Kartei.'); return; }
+  const karteiName=loadKarteien().find(k=>k.id===activeKartei)?.name||'Kartei';
+  dlText(buildCSVRows(list),`${eventName.replace(/\s+/g,'_')}_${karteiName.replace(/[^\w]/g,'_')}_neu.csv`);
+  markExported(list.map(i=>i._id));
+}
+
+function exportSingleCSV(id) {
+  const item=loadAllCards().find(i=>i._id===id);
+  if(!item) return;
+  const c=item.contact||{};
+  dlText(buildCSVRows([item]),(c.name||'lead').replace(/\s+/g,'_')+'_lead.csv');
+  markExported([id]);
+}
+
+function markExported(ids) {
+  const set=new Set(ids);
+  const list=loadAllCards().map(i=>set.has(i._id)?{...i,_status:'exported'}:i);
+  saveAllCards(list);
+  const box=document.getElementById('csv-success');
+  box.textContent=`✅ ${ids.length} Lead(s) als CSV exportiert — bereit für Salesforce-Import.`;
+  box.style.display='block';
+  renderKartei();
+}
+
+// ── EXPORT ──
+function exportVCard() { if(currentData) exportVCardData(currentData); }
+function exportVCardFromItem(id) { const item=loadAllCards().find(i=>i._id===id); if(item) exportVCardData(item); }
+function exportVCardData(d) {
+  const c=d.contact||{};
+  const parts=(c.name||'').split(' '); const last=parts.pop()||'', first=parts.join(' ');
+  const lines=['BEGIN:VCARD','VERSION:3.0',`FN:${c.name||''}`,`N:${last};${first};;;`,
+    c.title?`TITLE:${c.title}`:'', c.company?`ORG:${c.company}`:'',
+    c.email?`EMAIL:${c.email}`:'', c.phone?`TEL;TYPE=WORK:${c.phone}`:'',
+    c.mobile?`TEL;TYPE=CELL:${c.mobile}`:'', c.website?`URL:${c.website}`:'','END:VCARD'
+  ].filter(Boolean).join('\r\n');
+  dl(new Blob([lines],{type:'text/vcard'}),(c.name||'kontakt').replace(/\s+/g,'_')+'.vcf');
+}
+
+function exportFullSingle() {
+  if(!currentData) return;
+  currentData._notes  =document.getElementById('notes-text').value;
+  currentData._meeting=document.getElementById('meeting-text').value;
+  currentData._memo   =document.getElementById('memo-sections').innerText;
+  const c=currentData.contact||{}, cp=currentData.company_profile||{}, pp=currentData.person_profile||{};
+  const enCp=currentData.en?.company_profile||{};
+  const tips=(currentData.conversation_tips||[]).map((t,i)=>`${i+1}. ${t}`).join('\n');
+  const enTips=(currentData.en?.conversation_tips||[]).map((t,i)=>`${i+1}. ${t}`).join('\n');
+  const txt=`VISITENKARTEN-BRIEFING — ${eventName}\n${'='.repeat(40)}\nName: ${c.name}\nTitel: ${c.title}\nFirma: ${c.company}\nE-Mail: ${c.email}\nTelefon: ${c.phone}\nWebseite: ${c.website}\n\nFIRMENPROFIL (DE)\n${'-'.repeat(30)}\nBranche: ${cp.industry}\nGroesse: ${cp.size}\nHauptsitz: ${cp.hq}\nKernprodukte: ${cp.products}\nPositionierung: ${cp.positioning}\n\nZUR PERSON (DE)\n${'-'.repeat(30)}\nAufgabenbereich: ${pp.role_scope}\nSenioritaet: ${pp.seniority}\nFachgebiete: ${pp.expertise}\n\nGESPRAECHSTIPPS (DE)\n${'-'.repeat(30)}\n${tips}${currentData._lang==='en'?`\n\nCOMPANY PROFILE (EN)\n${'-'.repeat(30)}\nIndustry: ${enCp.industry}\nProducts: ${enCp.products}\n\nCONVERSATION TIPS (EN)\n${'-'.repeat(30)}\n${enTips}`:''}${currentData._notes?`\n\nNOTIZEN\n${'-'.repeat(30)}\n${currentData._notes}`:''}${currentData._meeting?`\n\nGESPRAECHSNOTIZEN\n${'-'.repeat(30)}\n${currentData._meeting}`:''}${currentData._memo?`\n\nMEETING-MEMO\n${'-'.repeat(30)}\n${currentData._memo}`:''}\n\nErstellt: ${new Date().toLocaleString('de-DE')}`;
+  dlText(txt,(c.name||'kontakt').replace(/\s+/g,'_')+'_briefing.txt');
+}
+
+function dl(blob,name){ const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; a.click(); }
+function dlText(txt,name){ dl(new Blob([txt],{type:'text/plain;charset=utf-8'}),name); }
+function showErr(id,msg){ const el=document.getElementById(id); if(el){ el.textContent=msg; el.style.display='block'; } }
+
+function switchTab(tab) {
+  document.getElementById('tab-notes').classList.toggle('active',tab==='notes');
+  document.getElementById('tab-meeting').classList.toggle('active',tab==='meeting');
+  document.getElementById('panel-notes').style.display=tab==='notes'?'block':'none';
+  document.getElementById('panel-meeting').style.display=tab==='meeting'?'block':'none';
+}
+function toggleAuto(){
+  autoEnabled=!autoEnabled;
+  document.getElementById('auto-toggle-sw').className='toggle-switch'+(autoEnabled?' on':'');
+  document.getElementById('auto-label').textContent=autoEnabled?'Auto-Scan':'Manuell';
+  if(!autoEnabled){ cancelCountdown(); stableFrames=0; cardDetected=false; guideFrame.classList.remove('detected'); }
+}
+function resetScanner(){
+  document.getElementById('result-wrap').style.display='none';
+  document.getElementById('scanner-card').style.display='block';
+  isAnalyzing=false; currentData=null; stableFrames=0;
+  cardDetected=false; countdownActive=false;
+  camStatus.textContent='Karte in den Rahmen halten …'; camStatus.className='cam-status';
+  guideFrame.classList.remove('detected'); cancelCountdown(); startCamera();
+}
+
+// ── TRANSLATOR ──
+// ── TRANSLATOR ──
+let convHistory = [];
+let transRecording = false;
+let transRecWhich = null;
+let transMediaRecorder = null;
+let transAudioChunks = [];
+let currentSpeech = null;
+let detectedOtherLang = null;
+let detectedOtherLangName = null;
+
+const WHISPER_LANG_NAMES = {
+  de:'Deutsch', en:'Englisch', uk:'Ukrainisch', ru:'Russisch',
+  zh:'Chinesisch', ja:'Japanisch', ko:'Koreanisch', ar:'Arabisch',
+  tr:'Türkisch', pl:'Polnisch', cs:'Tschechisch', sk:'Slowakisch',
+  hu:'Ungarisch', ro:'Rumänisch', nl:'Niederländisch', fr:'Französisch',
+  es:'Spanisch', it:'Italienisch', pt:'Portugiesisch', sv:'Schwedisch',
+  fi:'Finnisch', el:'Griechisch', he:'Hebräisch', fa:'Persisch',
+  hi:'Hindi', th:'Thailändisch', vi:'Vietnamesisch', id:'Indonesisch',
+  bg:'Bulgarisch', hr:'Kroatisch', da:'Dänisch', et:'Estnisch',
+  lv:'Lettisch', lt:'Litauisch', sr:'Serbisch', sl:'Slowenisch'
+};
+
+const LOCALE_MAP = {
+  de:'de-DE', en:'en-US', uk:'uk-UA', ru:'ru-RU', zh:'zh-CN',
+  ja:'ja-JP', ko:'ko-KR', ar:'ar-SA', tr:'tr-TR', pl:'pl-PL',
+  fr:'fr-FR', es:'es-ES', it:'it-IT', pt:'pt-PT', nl:'nl-NL',
+  cs:'cs-CZ', sk:'sk-SK', hu:'hu-HU', ro:'ro-RO', sv:'sv-SE',
+  fi:'fi-FI', el:'el-GR', he:'he-IL', hi:'hi-IN', th:'th-TH',
+  vi:'vi-VN', id:'id-ID', fa:'fa-IR', bg:'bg-BG', hr:'hr-HR',
+  da:'da-DK', et:'et-EE', lv:'lv-LV', lt:'lt-LT', sr:'sr-RS'
+};
+
+function clearConversation() {
+  convHistory=[]; detectedOtherLang=null; detectedOtherLangName=null;
+  document.getElementById('conv-history').innerHTML='';
+  document.getElementById('conv-card').style.display='none';
+  document.getElementById('my-input').value='';
+  document.getElementById('other-input').value='';
+  document.getElementById('other-lang-detected').textContent='Sprache wird beim Diktieren automatisch erkannt …';
+  document.getElementById('detected-lang-hint').textContent='';
+}
+
+async function translate(side) {
+  const isMine=side==='my';
+  const text=document.getElementById(isMine?'my-input':'other-input').value.trim();
+  if(!text){ alert('Bitte zuerst Text eingeben oder diktieren.'); return; }
+  const btn=document.getElementById('btn-trans-'+side);
+  btn.disabled=true; btn.textContent='⧗️ Übersetze …';
+  try {
+    let fromName, toName, toLangCode, translated;
+    if(isMine) {
+      fromName='Deutsch';
+      const targetInstr=detectedOtherLangName
+        ? 'Übersetze von Deutsch nach '+detectedOtherLangName+'.'
+        : 'Übersetze von Deutsch ins Englische.';
+      toName=detectedOtherLangName||'Englisch';
+      toLangCode=detectedOtherLang||'en';
+      const prompt=targetInstr+' Gib NUR die Übersetzung zurück, ohne Erklärung:\n\n'+text;
+      translated=await callClaude([{role:'user',content:prompt}],400);
+    } else {
+      const prompt='Erkenne die Sprache des folgenden Textes und übersetze ihn ins Deutsche. Antworte nur als JSON: {"sprache":"Sprachname auf Deutsch","uebersetzung":"Deutsche Übersetzung"}\n\nText: '+text;
+      const raw=await callClaude([{role:'user',content:prompt}],400);
+      let parsed;
+      try{ parsed=JSON.parse(raw.replace(/```json|```/g,'').trim()); }
+      catch(e){ parsed={sprache:'Unbekannt',uebersetzung:raw}; }
+      fromName=parsed.sprache||'Unbekannt';
+      translated=parsed.uebersetzung||raw;
+      toName='Deutsch'; toLangCode='de';
+      detectedOtherLangName=fromName;
+      document.getElementById('other-lang-detected').textContent='🌐 Erkannte Sprache: '+fromName;
+      document.getElementById('detected-lang-hint').textContent='Gesprächspartner spricht '+fromName+' — Übersetzungen werden automatisch angepasst.';
+    }
+    const entry={side,orig:text,trans:translated.trim(),fromName,toName,toLangCode,id:Date.now()};
+    convHistory.push(entry);
+    renderConvHistory();
+    document.getElementById(isMine?'my-input':'other-input').value='';
+    speakText(translated.trim(),toLangCode,entry.id);
+  } catch(err){ alert('Übersetzungsfehler: '+err.message); }
+  finally{ btn.disabled=false; btn.textContent='▶️ Übersetzen & Vorlesen'; }
+}
+
+function renderConvHistory() {
+  const card=document.getElementById('conv-card');
+  const hist=document.getElementById('conv-history');
+  card.style.display='block';
+  hist.innerHTML=convHistory.map(e=>`
+    <div class="conv-bubble ${e.side}">
+      <div class="bubble-orig">${e.fromName}: ${e.orig}</div>
+      <div class="bubble-trans">${e.trans}</div>
+      <div class="bubble-meta">
+        <span>→ ${e.toName}</span>
+        <button class="btn-speak" id="speak-btn-${e.id}" onclick="speakText(convHistory.find(x=>x.id===${e.id})?.trans||'','${e.toLangCode}',${e.id})">
+          🔊 Vorlesen
+        </button>
+      </div>
+    </div>`).join('');
+  hist.scrollTop=hist.scrollHeight;
+}
+
+function speakText(text, langCode, entryId) {
+  if(currentSpeech){ window.speechSynthesis.cancel(); currentSpeech=null; }
+  document.querySelectorAll('.btn-speak').forEach(b=>{ b.textContent='🔊 Vorlesen'; b.classList.remove('speaking'); });
+  const utter=new SpeechSynthesisUtterance(text);
+  utter.lang=LOCALE_MAP[langCode]||langCode;
+  utter.rate=0.88;
+  const btn=document.getElementById('speak-btn-'+entryId);
+  if(btn){ btn.textContent='🔊 Wird vorgelesen …'; btn.classList.add('speaking'); }
+  utter.onend=()=>{ currentSpeech=null; if(btn){ btn.textContent='🔊 Vorlesen'; btn.classList.remove('speaking'); } };
+  utter.onerror=()=>{ currentSpeech=null; if(btn){ btn.textContent='🔊 Vorlesen'; btn.classList.remove('speaking'); } };
+  currentSpeech=utter;
+  window.speechSynthesis.speak(utter);
+}
+
+async function transToggleMic(side) {
+  if(transRecording&&transRecWhich===side){ transMediaRecorder?.stop(); return; }
+  if(transRecording){ transMediaRecorder?.stop(); await new Promise(r=>setTimeout(r,300)); }
+  if(openaiKey) await startTransWhisper(side);
+  else startTransBrowserSpeech(side);
+}
+
+async function startTransWhisper(side) {
+  try {
+    const micStream=await navigator.mediaDevices.getUserMedia({audio:true});
+    transAudioChunks=[];
+    const mime=getSupportedMimeType();
+    transMediaRecorder=new MediaRecorder(micStream,{mimeType:mime});
+    const btn=document.getElementById('mic-'+side);
+    const rec=document.getElementById('rec-'+side);
+    btn.textContent='⏹️ Stopp'; btn.classList.add('recording');
+    rec.style.display='flex'; transRecording=true; transRecWhich=side;
+    transMediaRecorder.ondataavailable=e=>{ if(e.data.size>0) transAudioChunks.push(e.data); };
+    transMediaRecorder.onstop=async()=>{
+      btn.textContent='⏳ Erkenne Sprache …'; btn.disabled=true;
+      rec.style.display='none'; transRecording=false;
+      const blob=new Blob(transAudioChunks,{type:mime});
+      micStream.getTracks().forEach(t=>t.stop());
+      try {
+        const ext=mime.includes('mp4')?'m4a':mime.includes('ogg')?'ogg':'webm';
+        const fd=new FormData();
+        fd.append('file',blob,'rec.'+ext);
+        fd.append('model','whisper-1');
+        fd.append('response_format','verbose_json');
+        // Only fix DE for my side — other side: no language hint = auto-detect
+        if(side==='my') fd.append('language','de');
+        const res=await fetch('https://api.openai.com/v1/audio/transcriptions',{
+          method:'POST', headers:{'Authorization':'Bearer '+openaiKey}, body:fd
+        });
+        const data=await res.json();
+        if(data.error) throw new Error(data.error.message);
+        const ta=document.getElementById(side==='my'?'my-input':'other-input');
+        ta.value=(ta.value?ta.value+' ':'')+(data.text||'');
+        if(side==='other'&&data.language) {
+          const langName=WHISPER_LANG_NAMES[data.language]||data.language;
+          detectedOtherLang=data.language;
+          detectedOtherLangName=langName;
+          document.getElementById('other-lang-detected').textContent='🌐 Erkannte Sprache: '+langName;
+          document.getElementById('detected-lang-hint').textContent='Gesprächspartner spricht '+langName+' — Übersetzungen werden automatisch angepasst.';
+        }
+      } catch(err){ alert('Whisper: '+err.message); }
+      finally{ btn.textContent=side==='my'?'🎤 Diktieren (DE)':'🎤 Diktieren (Auto)'; btn.disabled=false; btn.classList.remove('recording'); }
+    };
+    transMediaRecorder.start();
+  } catch(e){ alert('Mikrofon: '+e.message); }
+}
+
+function startTransBrowserSpeech(side) {
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){ alert('Bitte OpenAI Key eintragen für automatische Spracherkennung.'); return; }
+  const recognition=new SR();
+  recognition.lang=side==='my'?'de-DE':'';
+  recognition.continuous=true; recognition.interimResults=true;
+  const ta=document.getElementById(side==='my'?'my-input':'other-input');
+  const btn=document.getElementById('mic-'+side);
+  let base=ta.value;
+  btn.textContent='⏹️ Stopp'; btn.classList.add('recording');
+  transRecording=true; transRecWhich=side;
+  recognition.onresult=e=>{
+    let interim='',final='';
+    for(let i=e.resultIndex;i<e.results.length;i++){
+      if(e.results[i].isFinal) final+=e.results[i][0].transcript+' ';
+      else interim+=e.results[i][0].transcript;
+    }
+    if(final) base+=final; ta.value=base+interim;
+  };
+  recognition.onend=()=>{ btn.textContent=side==='my'?'🎤 Diktieren (DE)':'🎤 Diktieren (Auto)'; btn.classList.remove('recording'); transRecording=false; transRecWhich=null; };
+  recognition.onerror=()=>{ btn.textContent=side==='my'?'🎤 Diktieren (DE)':'🎤 Diktieren (Auto)'; btn.classList.remove('recording'); transRecording=false; transRecWhich=null; };
+  transMediaRecorder={stop:()=>recognition.stop()};
+  recognition.start();
+}
+
+
+updateNavBadge();
+renderSaveChips();
+updateBadges();
+init();
+</script>
+</body>
+</html>
